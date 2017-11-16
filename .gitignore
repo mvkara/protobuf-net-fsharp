@@ -1,0 +1,6 @@
+/packages
+/paket-files
+/src/ProtoBuf.FSharpHelpers/bin
+/src/ProtoBuf.FSharpHelpers/obj
+/test/ProtoBuf.FSharpHelpers.Unit/bin
+/test/ProtoBuf.FSharpHelpers.Unit/obj

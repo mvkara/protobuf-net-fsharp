@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <AssemblyName>ProtoBuf.FSharpHelpers</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ProtobufUtils.fs" />
+    <Content Include="app.config" />
+  </ItemGroup>
+  <Import Project="..\..\.paket\Paket.Restore.targets" />
+</Project>

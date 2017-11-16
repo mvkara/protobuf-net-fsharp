@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>netcoreapp2.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ProtoBuf.FSharpHelpers\ProtoBuf.FSharpHelpers.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="app.config" />
+    <Compile Include="CommonUtils.fs" />
+    <Compile Include="TestUnionRoundtrip.fs" />
+    <Compile Include="TestRecordRoundtrip.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <Import Project="..\..\.paket\Paket.Restore.targets" />
+</Project>
