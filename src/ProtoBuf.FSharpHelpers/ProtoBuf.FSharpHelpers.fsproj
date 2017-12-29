@@ -1,9 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>netstandard2.0</TargetFramework>
     <AssemblyName>ProtoBuf.FSharpHelpers</AssemblyName>
+    <TargetFramework>netstandard2.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\..\..\forks\protobuf-net\src\protobuf-net\protobuf-net.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="CollectionRegistration.fs" />
     <Compile Include="ProtobufUtils.fs" />
     <Content Include="app.config" />
   </ItemGroup>
