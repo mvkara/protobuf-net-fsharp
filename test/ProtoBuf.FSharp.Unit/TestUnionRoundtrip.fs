@@ -65,6 +65,9 @@ module ExampleTypesInsideModule =
     | CaseTwo
     | CaseThreee
 
+    [<RequireQualifiedAccess; TestName("Multicase DU with F# linked list")>]
+    type UnionWithList = | One of int | Two of int list
+
 module TestUnionRoundtrip =
 
     let propertyToTest<'t when 't : equality> (typeToTest: 't) = 
@@ -116,4 +119,5 @@ module TestUnionRoundtrip =
               buildTest<Result<int, bool>>()
               buildTest<Result<string, int[]>>()
               buildTest<ExampleTypesInsideModule.ValueUnionNoData>()
+              buildTest<ExampleTypesInsideModule.UnionWithList>()
               ]

@@ -36,6 +36,14 @@ module Serialiser =
             then
                 registerSurrogate optionType model |> ignore
 
+    let private attemptToRegisterFieldType (fieldType: Type) (model: RuntimeTypeModel) =
+        if fieldType.IsGenericType then
+            let def = fieldType.GetGenericTypeDefinition()
+            if def = typedefof<_ option> then
+                registerOptionTypesIntoModel fieldType None model
+            elif def = typedefof<_ list> then
+                CollectionRegistration.registerCollectionWithReflectedTypeIntoModel model fieldType |> ignore
+
     let private processFieldsAndCreateFieldSetters (typeToAdd: Type) (model : RuntimeTypeModel) =
         let metaType = model.Add(typeToAdd, false)
         metaType.UseConstructor <- false
@@ -111,7 +119,7 @@ module Serialiser =
                 processFieldsAndCreateFieldSetters recordType model |> ignore
 
             for field in fields do
-                registerOptionTypesIntoModel field.PropertyType None model
+                attemptToRegisterFieldType field.PropertyType model
 
         | unionType when FSharpType.IsUnion(unionType, true) ->
             if unionType.IsGenericType && unionType.GetGenericTypeDefinition() = typedefof<Option<_>> then
@@ -125,7 +133,7 @@ module Serialiser =
 
             for caseInfo in FSharpType.GetUnionCases(unionType, true) do
                 for field in caseInfo.GetFields() do
-                    registerOptionTypesIntoModel field.PropertyType None model
+                    attemptToRegisterFieldType field.PropertyType model
 
         | _ ->
             model.Add(runtimeType, true) |> ignore

@@ -6,6 +6,7 @@
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="CollectionRegistration.fs" />
     <Compile Include="MethodHelpers.fs" />
     <Compile Include="ZeroValues.fs" />
     <Compile Include="Surrogates.fs" />

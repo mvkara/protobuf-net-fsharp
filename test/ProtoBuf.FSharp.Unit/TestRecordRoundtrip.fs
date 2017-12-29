@@ -97,6 +97,13 @@ type StructWith2GenericArs<'t, 'r> = {
     Data2 : 'r
 }
 
+[<TestName("Standard record with a simple C# list")>]
+type TestRecordOneWithList = {
+    One: string
+    Two: int
+    Three: string list
+}
+
 module TestRecordRoundtrip = 
 
     // F# does not allow nulls although FsCheck tries to stress C# interoperability.
@@ -148,7 +155,7 @@ module TestRecordRoundtrip =
     let test() = 
         testList 
             "Record Test Cases" 
-            [ yield buildTest<TestRecordOne>; 
+            [ yield buildTest<TestRecordOne>
               yield buildTest<TestRecordTwo>
               yield buildTest<TestRecordThree>
               yield buildTest<TestRecordFour>
@@ -162,5 +169,6 @@ module TestRecordRoundtrip =
               yield buildTest<StructWith2GenericArs<string, int>>
               yield buildTest<StructWith2GenericArs<string, string[]>>
               yield buildTest<StructWith2GenericArs<int, string[] option>>
+              yield buildTest<TestRecordOneWithList>
               yield! manualTestCases
             ]
