@@ -109,6 +109,8 @@ vs the default protobuf-net behaviour at time of writing
 
 ## Collection Support ##
 
+**NOTE: This requires a PR to the protobuf-net library to enable custom surrogates. Until this is approved this feature branch is a POC only (https://github.com/mgravell/protobuf-net/pull/336)**
+
 When using Protobuf-net with F# there are some issues when using collections:
 
 - By default only the standard .NET collections are supported. F# collections (not being OO based) don't work by default.
