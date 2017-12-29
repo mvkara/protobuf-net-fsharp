@@ -4,11 +4,11 @@ VisualStudioVersion = 15.0.27004.2005
 MinimumVisualStudioVersion = 15.0.26124.0
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{C96334A8-D895-4B8D-98C5-ED445002D10E}"
 EndProject
-Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "ProtoBuf.FSharpHelpers", "src\ProtoBuf.FSharpHelpers\ProtoBuf.FSharpHelpers.fsproj", "{2A86F63A-7757-4E5D-9767-A3E8B1288A09}"
+Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "ProtoBuf.FSharpHelpers", "src/ProtoBuf.FSharpHelpers/ProtoBuf.FSharpHelpers.fsproj", "{2A86F63A-7757-4E5D-9767-A3E8B1288A09}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "test", "test", "{05FAEF74-6EB4-4B70-815B-623B6B47146C}"
 EndProject
-Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "ProtoBuf.FSharpHelpers.Unit", "test\ProtoBuf.FSharpHelpers.Unit\ProtoBuf.FSharpHelpers.Unit.fsproj", "{63D0255E-7F04-41BD-B116-616FDEF19426}"
+Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "ProtoBuf.FSharpHelpers.Unit", "test/ProtoBuf.FSharpHelpers.Unit/ProtoBuf.FSharpHelpers.Unit.fsproj", "{63D0255E-7F04-41BD-B116-616FDEF19426}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
