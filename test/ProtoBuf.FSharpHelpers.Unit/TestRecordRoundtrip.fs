@@ -33,7 +33,7 @@ module TestRecordRoundtrip =
             
         static member GenerateNonNullString() : Arbitrary<string> = Arb.Default.StringWithoutNullChars().Generator |> Gen.map (fun x -> x.Get) |> Gen.filter (box >> Operators.isNull >> not) |> Arb.fromGen
 
-    let propertyToTest<'t when 't : equality> (typeToTest: 't)  = 
+    let roundtripSerialise (typeToTest: 't) = 
         let model = 
             RuntimeTypeModel.Create()
             |> ProtobufNetSerialiser.registerRecordIntoModel<'t>
@@ -45,7 +45,10 @@ module TestRecordRoundtrip =
         use ms = new MemoryStream()
         ProtobufNetSerialiser.serialise model ms typeToTest
         ms.Seek(0L, SeekOrigin.Begin) |> ignore
-        let rtData = ProtobufNetSerialiser.deserialise<'t> model ms
+        ProtobufNetSerialiser.deserialise<'t> model ms
+
+    let testRoundtrip<'t when 't : equality> (typeToTest: 't)  = 
+        let rtData = roundtripSerialise typeToTest
         equal rtData typeToTest "Type not equal"
     
     let config = { Config.QuickThrowOnFailure with Arbitrary = [ typeof<DataGenerator> ]; }
@@ -54,10 +57,18 @@ module TestRecordRoundtrip =
 
     let buildTest<'t when 't : equality> = 
         let testNameAttribute = typeof<'t>.GetCustomAttributes(typeof<TestNameAttribute>, true) |> Seq.head :?> TestNameAttribute
-        testCase testNameAttribute.Name <| fun () -> Check.One(config, propertyToTest<'t>)
+        testCase testNameAttribute.Name <| fun () -> Check.One(config, testRoundtrip<'t>)
+
+    let manualTestCases = [
+        testCase "Can serialise empty array, string and option" <| fun () -> testRoundtrip { One = ""; Two = 1; Three = [||]; Four = None }
+        testCase "Can serialise option containing value" <| fun () -> testRoundtrip { One = ""; Two = 1; Three = [||]; Four = Some "TEST" }
+        testCase "Can serialise string, array and option containing value" <| fun () -> testRoundtrip { One = "TEST"; Two = 1; Three = [| "TEST1" |]; Four = Some "TEST" }
+    ]
 
     [<Tests>]
     let test() = 
         testList 
             "Record Test Cases" 
-            [ buildTest<TestRecordOne>; buildTest<TestRecordTwo>  ]
+            [ yield buildTest<TestRecordOne>; 
+              yield buildTest<TestRecordTwo>
+              yield! manualTestCases ]
