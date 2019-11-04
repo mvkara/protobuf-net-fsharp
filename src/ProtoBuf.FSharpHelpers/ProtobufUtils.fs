@@ -151,9 +151,7 @@ module ProtobufNetSerialiser =
             metaType.SetFactory(factoryMethodInfo)
         else metaType            
 
-    let registerUnionIntoModel<'t> (model: RuntimeTypeModel) =
-
-        let unionType = typeof<'t>
+    let registerUnionRuntimeTypeIntoModel (unionType: Type) (model: RuntimeTypeModel) =
         let unionCaseData = FSharpType.GetUnionCases(unionType, true)
         
         // Register the supertype in all cases
@@ -164,7 +162,7 @@ module ProtobufNetSerialiser =
 
         // If there are no fields in any properties then we can assume the F# compiler has compiled
         // the class in a non-flat fashion. Structs are still compiled in a flat way (F# 4.1+ struct DU's).
-        let isReferenceMulticaseDuWithPayload = not (typeof<'t>.IsValueType || unionCaseData |> Seq.collect (fun x -> x.GetFields()) |> Seq.isEmpty)
+        let isReferenceMulticaseDuWithPayload = not (unionType.IsValueType || unionCaseData |> Seq.collect (fun x -> x.GetFields()) |> Seq.isEmpty)
         
         if isReferenceMulticaseDuWithPayload
         then 
@@ -181,20 +179,26 @@ module ProtobufNetSerialiser =
                 processFieldsAndCreateFieldSetters typeToAdd caseTypeModel |> ignore
         model  
 
-    let registerRecordIntoModel<'t> (model: RuntimeTypeModel) = 
-        let metaType = model.Add(typeof<'t>, false)
-        metaType.UseConstructor <- false
-        let metaType = processFieldsAndCreateFieldSetters typeof<'t> metaType 
-        model          
+    let registerUnionIntoModel<'tunion> model = registerUnionRuntimeTypeIntoModel typeof<'tunion> model
 
-    let registerTypeIntoModel<'t> (model: RuntimeTypeModel) = 
-        if FSharpType.IsRecord typeof<'t>
-        then registerRecordIntoModel<'t> model
-        elif FSharpType.IsUnion typeof<'t>
-        then registerUnionIntoModel<'t> model
+    let registerRecordRuntimeTypeIntoModel (runtimeType: Type) (model: RuntimeTypeModel) =
+        let metaType = model.Add(runtimeType, false)
+        metaType.UseConstructor <- false
+        let metaType = processFieldsAndCreateFieldSetters runtimeType metaType 
+        model
+
+    let registerRecordIntoModel<'t> (model: RuntimeTypeModel) = registerRecordRuntimeTypeIntoModel typeof<'t> model
+
+    let registerRuntimeTypeIntoModel (runtimeType: Type) (model: RuntimeTypeModel) = 
+        if FSharpType.IsRecord runtimeType
+        then registerRecordRuntimeTypeIntoModel runtimeType model
+        elif FSharpType.IsUnion runtimeType
+        then registerUnionRuntimeTypeIntoModel runtimeType model
         else 
-            model.Add(typeof<'t>, true) |> ignore
+            model.Add(runtimeType, true) |> ignore
             model
+    
+    let registerTypeIntoModel<'t> (model: RuntimeTypeModel) = registerRuntimeTypeIntoModel typeof<'t> model
 
     let serialise (model: RuntimeTypeModel) (stream: Stream) (o: 't) = model.Serialize(stream, o)
 
