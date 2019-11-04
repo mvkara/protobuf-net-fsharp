@@ -13,10 +13,18 @@ using the protobuf-net library.
 
 - Records
 - Discriminated Unions
-- Options
+- Option fields on the above types
 
-Currently the non-supported features are mainly around the F# collections (Set, List, etc.). At the present time
-there is no way I know of to add support for these outside the library that will be supported going forward.
+Currently the non-supported features are mainly around the F# collections (Set, List, etc.). More work is required to support these.
+
+## How to build ##
+
+Using Net Core 3.0 or above:
+
+```
+dotnet tool restore
+dotnet build
+```
 
 ## How to use ##
 
