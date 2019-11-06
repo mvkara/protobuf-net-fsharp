@@ -43,6 +43,9 @@ module ExampleTypesInsideModule =
     [<RequireQualifiedAccess; TestName("More than one field per case; has array type and option type")>]
     type UnionSeven = | One of int option | Two of test1: int option * test2: int array
 
+    [<RequireQualifiedAccess; TestName("Single case union with data")>]
+    type UnionEight = | One of int option * two: int array
+
 module TestUnionRoundtrip =
 
     let propertyToTest<'t when 't : equality> (typeToTest: 't) = 
@@ -71,4 +74,5 @@ module TestUnionRoundtrip =
               buildTest<ExampleTypesInsideModule.UnionFour>()
               buildTest<ExampleTypesInsideModule.UnionFive>()
               buildTest<ExampleTypesInsideModule.UnionSix>()
-              buildTest<ExampleTypesInsideModule.UnionSeven>() ]
+              buildTest<ExampleTypesInsideModule.UnionSeven>()
+              buildTest<ExampleTypesInsideModule.UnionEight>() ]

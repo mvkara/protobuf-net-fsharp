@@ -157,26 +157,29 @@ module ProtobufNetSerialiser =
         // Register the supertype in all cases
         let mt = model.Add(unionType, true)
         mt.UseConstructor <- false
-        for (fId, f) in unionType.GetFields(BindingFlags.NonPublic ||| BindingFlags.Instance ||| BindingFlags.GetField) |> zipWithOneBasedIndex do
-            mt.AddField(fId, f.Name) |> ignore
+        processFieldsAndCreateFieldSetters unionType mt |> ignore
+        // for (fId, f) in unionType.GetFields(BindingFlags.NonPublic ||| BindingFlags.Instance ||| BindingFlags.GetField) |> zipWithOneBasedIndex do
+        //     mt.AddField(fId, f.Name) |> ignore
 
         // If there are no fields in any properties then we can assume the F# compiler has compiled
         // the class in a non-flat fashion. Structs are still compiled in a flat way (F# 4.1+ struct DU's).
+        // Note: Protobuf doesn't quite support custom factories of structs failing at the verification so we are not supporting this.
         let isReferenceMulticaseDuWithPayload = not (unionType.IsValueType || unionCaseData |> Seq.collect (fun x -> x.GetFields()) |> Seq.isEmpty)
         
         if isReferenceMulticaseDuWithPayload
         then 
-            for ucd in unionCaseData do
-                // Cases with no fields are deemed private by the model (if no fields then it is a private class with a _ in its name)
-                let suffix = if ucd.GetFields() |> Seq.isEmpty then "_" + ucd.Name else ucd.Name
-                let typeToAdd = unionType.Assembly.GetType(ucd.DeclaringType.FullName + "+" + suffix)
-                
-                let caseTypeModel = model.Add(typeToAdd, true)
-                
-                mt.AddSubType(1000 + ucd.Tag, typeToAdd) |> ignore
-                caseTypeModel.UseConstructor <- false
-                
-                processFieldsAndCreateFieldSetters typeToAdd caseTypeModel |> ignore
+            if unionCaseData.Length > 1 // Otherwise all fields would already be populated in the union root type before this IF statement.
+            then
+                for ucd in unionCaseData do
+                    // Cases with no fields are deemed private by the model (if no fields then it is a private class with a _ in its name)
+                    let suffix = if ucd.GetFields() |> Seq.isEmpty then "_" + ucd.Name else ucd.Name
+                    let typeToAdd = unionType.Assembly.GetType(ucd.DeclaringType.FullName + "+" + suffix)
+                    if isNull typeToAdd then failwithf "Couldn't find expected type for union case [UnionCaseInfo: %A, AttemptedSuffix: %s, AllTypes: %A]" ucd suffix (unionType.Assembly.GetTypes() |> Array.filter (fun x -> x.IsSubclassOf(unionType)))
+                    let caseTypeModel = model.Add(typeToAdd, true)
+                    mt.AddSubType(1000 + ucd.Tag, typeToAdd) |> ignore
+                    caseTypeModel.UseConstructor <- false
+                    processFieldsAndCreateFieldSetters typeToAdd caseTypeModel |> ignore
+        
         model  
 
     let registerUnionIntoModel<'tunion> model = registerUnionRuntimeTypeIntoModel typeof<'tunion> model
