@@ -1,14 +1,10 @@
-namespace ProtoBuf.FSharpHelpers
+namespace ProtoBuf.FSharp
 
-open ProtoBuf
 open ProtoBuf.Meta
 open FSharp.Reflection
 open System
-open System.Linq.Expressions
 open System.Reflection
 open System.IO
-open System.Reflection
-open System.Collections.Generic
 open System.Collections.Concurrent
 open Microsoft.FSharp.Quotations.Patterns
 open System.Reflection.Emit
@@ -48,7 +44,7 @@ module private MethodHelpers =
         | _ -> declaringType.GetMethod(nameOfMethod, bindingFlagsToUse).MakeGenericMethod(typeParameters)        
 
     let constructObjectWithoutConstructor (typeToConstruct: Type) = 
-        System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeToConstruct)
+        Runtime.Serialization.FormatterServices.GetUninitializedObject(typeToConstruct)
 
     let staticSetters = new ConcurrentDictionary<Type, Delegate>()   
     let zeroValues = ConcurrentDictionary<Type, obj>() 
@@ -121,21 +117,20 @@ type private GenericSetterFactory =
         | (false, _) -> ()
         item
 
-module ProtobufNetSerialiser =
+module Serialiser =
     
-    let private zipWithOneBasedIndex item = item |> Seq.zip (Seq.initInfinite id |> Seq.skip 1)
-
     let private processFieldsAndCreateFieldSetters (typeToAdd: Type) (metaType: MetaType )= 
         metaType.UseConstructor <- false
         let _, fieldSetterDelegates =
         
             typeToAdd.GetFields(BindingFlags.NonPublic ||| BindingFlags.Instance ||| BindingFlags.GetField)
-            |> Array.fold 
+            |> Array.fold
                 (fun (index, delegates) fieldInfo -> 
                     //let mt = mt.Add(fieldInfo.Name)
-                    let fieldModel = metaType.AddField(index, fieldInfo.Name.Replace("@", ""))
+                    let fieldModel = metaType.AddField(index, fieldInfo.Name)
                     fieldModel.BackingMember <- fieldInfo
                     fieldModel.OverwriteList <- true
+                    fieldModel.Name <- fieldInfo.Name.Replace("@", "").Replace("_", "")
                     
                     match GenericSetterFactory.GetSetterCallbackIfApplicableForFieldInfo fieldInfo with
                     | Some(d) -> (index+1, d :: delegates)
@@ -158,8 +153,6 @@ module ProtobufNetSerialiser =
         let mt = model.Add(unionType, true)
         mt.UseConstructor <- false
         processFieldsAndCreateFieldSetters unionType mt |> ignore
-        // for (fId, f) in unionType.GetFields(BindingFlags.NonPublic ||| BindingFlags.Instance ||| BindingFlags.GetField) |> zipWithOneBasedIndex do
-        //     mt.AddField(fId, f.Name) |> ignore
 
         // If there are no fields in any properties then we can assume the F# compiler has compiled
         // the class in a non-flat fashion. Structs are still compiled in a flat way (F# 4.1+ struct DU's).
@@ -178,6 +171,7 @@ module ProtobufNetSerialiser =
                     let caseTypeModel = model.Add(typeToAdd, true)
                     mt.AddSubType(1000 + ucd.Tag, typeToAdd) |> ignore
                     caseTypeModel.UseConstructor <- false
+                    caseTypeModel.Name <- ucd.Name
                     processFieldsAndCreateFieldSetters typeToAdd caseTypeModel |> ignore
         
         model  
@@ -187,7 +181,7 @@ module ProtobufNetSerialiser =
     let registerRecordRuntimeTypeIntoModel (runtimeType: Type) (model: RuntimeTypeModel) =
         let metaType = model.Add(runtimeType, false)
         metaType.UseConstructor <- false
-        let metaType = processFieldsAndCreateFieldSetters runtimeType metaType 
+        processFieldsAndCreateFieldSetters runtimeType metaType |> ignore
         model
 
     let registerRecordIntoModel<'t> (model: RuntimeTypeModel) = registerRecordRuntimeTypeIntoModel typeof<'t> model

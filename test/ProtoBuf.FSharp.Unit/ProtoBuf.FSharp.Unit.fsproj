@@ -1,10 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>netcoreapp2.0</TargetFramework>
+    <TargetFramework>netcoreapp3.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\src\ProtoBuf.FSharpHelpers\ProtoBuf.FSharpHelpers.fsproj" />
+    <ProjectReference Include="..\..\src\ProtoBuf.FSharp\ProtoBuf.FSharp.fsproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="app.config" />

@@ -1,9 +1,9 @@
-namespace ProtoBuf.FSharpHelpers.Unit
+namespace ProtoBuf.FSharp.Unit
 
 open Expecto
 open FsCheck
 open System.IO
-open ProtoBuf.FSharpHelpers
+open ProtoBuf.FSharp
 open ProtoBuf.Meta
 open Expecto.Expect
 open System.Collections.Generic
@@ -36,16 +36,16 @@ module TestRecordRoundtrip =
     let roundtripSerialise (typeToTest: 't) = 
         let model = 
             RuntimeTypeModel.Create()
-            |> ProtobufNetSerialiser.registerRecordIntoModel<'t>
+            |> Serialiser.registerRecordIntoModel<'t>
         let m = model.Add(typeof<TestRecordOne>, true)
         m.UseConstructor <- false
         model.CompileInPlace()
         let cloned = model.DeepClone(typeToTest)
         equal (unbox cloned) typeToTest "Protobuf deep clone"
         use ms = new MemoryStream()
-        ProtobufNetSerialiser.serialise model ms typeToTest
+        Serialiser.serialise model ms typeToTest
         ms.Seek(0L, SeekOrigin.Begin) |> ignore
-        ProtobufNetSerialiser.deserialise<'t> model ms
+        Serialiser.deserialise<'t> model ms
 
     let testRoundtrip<'t when 't : equality> (typeToTest: 't)  = 
         let rtData = roundtripSerialise typeToTest

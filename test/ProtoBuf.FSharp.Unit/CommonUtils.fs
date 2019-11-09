@@ -1,4 +1,4 @@
-namespace ProtoBuf.FSharpHelpers.Unit
+namespace ProtoBuf.FSharp.Unit
 
 open System
 

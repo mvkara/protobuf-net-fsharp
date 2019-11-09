@@ -1,5 +1,5 @@
 type project
-id ProtoBuf.FSharpHelpers
+id protobuf-net-fsharp
 version 0.0.1
 authors mvkra
 description Allows F# types to work with protobuf-net

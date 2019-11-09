@@ -1,13 +1,11 @@
-namespace ProtoBuf.FSharpHelpers.Unit
+namespace ProtoBuf.FSharp.Unit
 
 open Expecto
 open FsCheck
 open System.IO
-open ProtoBuf.FSharpHelpers
-open ProtoBuf
+open ProtoBuf.FSharp
 open ProtoBuf.Meta
 open Expecto.Expect
-open System
 
 // F# does not allow nulls although FsCheck tries to stress C# interoperability.
 // Disabling it here because this library is for wrapping F# types only.
@@ -49,14 +47,14 @@ module ExampleTypesInsideModule =
 module TestUnionRoundtrip =
 
     let propertyToTest<'t when 't : equality> (typeToTest: 't) = 
-        let model = RuntimeTypeModel.Create() |> ProtobufNetSerialiser.registerUnionIntoModel<'t>
+        let model = RuntimeTypeModel.Create() |> Serialiser.registerUnionIntoModel<'t>
         model.CompileInPlace()
         let cloned = model.DeepClone(typeToTest)
         equal (unbox cloned) (typeToTest) "Protobuf deep clone"
         use ms = new MemoryStream()
-        ProtobufNetSerialiser.serialise model ms typeToTest
+        Serialiser.serialise model ms typeToTest
         ms.Seek(0L, SeekOrigin.Begin) |> ignore
-        let rtData = ProtobufNetSerialiser.deserialise<'t> model ms
+        let rtData = Serialiser.deserialise<'t> model ms
         equal rtData typeToTest "Type not equal"
     
     let buildTest<'t when 't : equality>() = 
