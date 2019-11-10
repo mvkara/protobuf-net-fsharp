@@ -35,7 +35,7 @@ dotnet run
 
 ## How to use ##
 
-All methods are in the ProtoBuf.FSharp.ProtobufNetSerialiser module. They all require a previous RuntimeTypeModel
+All methods are in the ProtoBuf.FSharp.Serialiser module. They all require a previous RuntimeTypeModel
 to be created and/or retrieved in advance. Detailed examples are found in the unit test projects.
 
 A quick example of how to get the runtime model, and register both an existing record and DU type against it is as follows:
