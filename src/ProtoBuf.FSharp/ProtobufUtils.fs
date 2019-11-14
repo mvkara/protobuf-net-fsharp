@@ -164,10 +164,27 @@ module Serialiser =
             if unionCaseData.Length > 1 // Otherwise all fields would already be populated in the union root type before this IF statement.
             then
                 for ucd in unionCaseData do
-                    // Cases with no fields are deemed private by the model (if no fields then it is a private class with a _ in its name)
-                    let suffix = if ucd.GetFields() |> Seq.isEmpty then "_" + ucd.Name else ucd.Name
-                    let typeToAdd = unionType.Assembly.GetType(ucd.DeclaringType.FullName + "+" + suffix)
-                    if isNull typeToAdd then failwithf "Couldn't find expected type for union case [UnionCaseInfo: %A, AttemptedSuffix: %s, AllTypes: %A]" ucd suffix (unionType.Assembly.GetTypes() |> Array.filter (fun x -> x.IsSubclassOf(unionType)))
+                    // Cases with no fields are deemed private by the model (if no fields then it is a private class with a _ in front of its name)
+                    let innerTypeName = if ucd.GetFields() |> Seq.isEmpty then "_" + ucd.Name else ucd.Name
+                    
+                    let typeToAddOpt = 
+                        unionType.GetNestedTypes(BindingFlags.Public ||| BindingFlags.NonPublic)
+                        |> Seq.tryFind (fun x -> x.Name = innerTypeName)
+                        |> Option.map 
+                            (fun typeToAdd -> 
+                                // Handle generic typed unions
+                                if unionType.IsGenericType && typeToAdd.IsGenericTypeDefinition 
+                                then typeToAdd.MakeGenericType(unionType.GetGenericArguments()) 
+                                else typeToAdd)
+
+                    let typeToAdd = 
+                        match typeToAddOpt with
+                        | Some(t) -> t
+                        | None ->
+                            failwithf 
+                                "Couldn't find expected type for union case [InnerCaseName: %s, UnionCaseInfo: %A, AttemptedInnerTypeName: %s]" 
+                                ucd.Name ucd innerTypeName
+
                     let caseTypeModel = model.Add(typeToAdd, true)
                     mt.AddSubType(1000 + ucd.Tag, typeToAdd) |> ignore
                     caseTypeModel.UseConstructor <- false
