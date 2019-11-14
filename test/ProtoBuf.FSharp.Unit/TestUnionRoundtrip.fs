@@ -44,6 +44,15 @@ module ExampleTypesInsideModule =
     [<RequireQualifiedAccess; TestName("Single case union with data")>]
     type UnionEight = | One of int option * two: int array
 
+    [<TestName("Union with generic; two cases")>]
+    type SerialisableOption<'t> = 
+        | SerialisableSome of 't
+        | SerialisableNone
+
+    [<TestName("Union with generic; single case union")>]
+    type Wrapper<'t> = | Wrapper of 't
+
+
 module TestUnionRoundtrip =
 
     let propertyToTest<'t when 't : equality> (typeToTest: 't) = 
@@ -73,4 +82,6 @@ module TestUnionRoundtrip =
               buildTest<ExampleTypesInsideModule.UnionFive>()
               buildTest<ExampleTypesInsideModule.UnionSix>()
               buildTest<ExampleTypesInsideModule.UnionSeven>()
-              buildTest<ExampleTypesInsideModule.UnionEight>() ]
+              buildTest<ExampleTypesInsideModule.UnionEight>()
+              buildTest<ExampleTypesInsideModule.SerialisableOption<string>>() 
+              buildTest<ExampleTypesInsideModule.Wrapper<string>>() ]
