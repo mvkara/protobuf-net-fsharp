@@ -167,8 +167,10 @@ module Serialiser =
                     // Cases with no fields are deemed private by the model (if no fields then it is a private class with a _ in front of its name)
                     let innerTypeName = if ucd.GetFields() |> Seq.isEmpty then "_" + ucd.Name else ucd.Name
                     
+                    let candidateTypes = unionType.GetNestedTypes(BindingFlags.Public ||| BindingFlags.NonPublic)
+
                     let typeToAddOpt = 
-                        unionType.GetNestedTypes(BindingFlags.Public ||| BindingFlags.NonPublic)
+                        candidateTypes
                         |> Seq.tryFind (fun x -> x.Name = innerTypeName)
                         |> Option.map 
                             (fun typeToAdd -> 
@@ -182,8 +184,8 @@ module Serialiser =
                         | Some(t) -> t
                         | None ->
                             failwithf 
-                                "Couldn't find expected type for union case [InnerCaseName: %s, UnionCaseInfo: %A, AttemptedInnerTypeName: %s]" 
-                                ucd.Name ucd innerTypeName
+                                "Couldn't find expected type for union case [UnionType: %A, InnerCaseName: %s, UnionCaseInfo: %A, AttemptedInnerTypeName: %s, CandidateTypes: %A]" 
+                                unionType.FullName ucd.Name ucd innerTypeName (candidateTypes |> Seq.map (fun x -> x.FullName))
 
                     let caseTypeModel = model.Add(typeToAdd, true)
                     mt.AddSubType(1000 + ucd.Tag, typeToAdd) |> ignore
