@@ -2,6 +2,8 @@
 
 This library is intended to provide a set of helper functions to allow F# types to be seriaised/deserialised using the protobuf-net library making it easier to use from a F# environment.
 
+[![NuGet Badge](http://img.shields.io/nuget/v/protobuf-net-fsharp.svg?style=flat)](https://www.nuget.org/packages/protobuf-net-fsharp)
+
 ## Aims ##
 
 - Support common F# types (Options, Records, DU)

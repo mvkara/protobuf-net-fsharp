@@ -1,7 +1,7 @@
 storage:none
 source https://www.nuget.org/api/v2
 
-nuget FSharp.Core ~> 4 redirects: force
+nuget FSharp.Core >= 4 redirects: force
 nuget protobuf-net
 nuget Expecto
 nuget FsCheck

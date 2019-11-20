@@ -3,6 +3,8 @@ id protobuf-net-fsharp
 version 0.0.1
 authors mvkra
 description Allows F# types to work with protobuf-net
+summary Allows F# types to work with protobuf-net
 projectUrl https://github.com/mvkra/protobuf-net-fsharp
 tags protobuf protobuf-net fsharp f#
+licenseUrl https://spdx.org/licenses/MIT.html
 include-pdbs true
