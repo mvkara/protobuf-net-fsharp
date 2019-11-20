@@ -187,8 +187,9 @@ module Serialiser =
                                 "Couldn't find expected type for union case [UnionType: %A, InnerCaseName: %s, UnionCaseInfo: %A, AttemptedInnerTypeName: %s, CandidateTypes: %A]" 
                                 unionType.FullName ucd.Name ucd innerTypeName (candidateTypes |> Seq.map (fun x -> x.FullName))
 
-                    let caseTypeModel = model.Add(typeToAdd, true)
-                    mt.AddSubType(1000 + ucd.Tag, typeToAdd) |> ignore
+                    let caseTypeModel = model.Add(typeToAdd, false)
+                    let tag = 1000 + ucd.Tag
+                    mt.AddSubType(tag, typeToAdd) |> ignore
                     caseTypeModel.UseConstructor <- false
                     caseTypeModel.Name <- ucd.Name
                     processFieldsAndCreateFieldSetters typeToAdd caseTypeModel |> ignore
