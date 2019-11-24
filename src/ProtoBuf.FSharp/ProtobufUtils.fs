@@ -1,5 +1,6 @@
 namespace ProtoBuf.FSharp
 
+open ProtoBuf
 open ProtoBuf.Meta
 open FSharp.Reflection
 open System
@@ -8,6 +9,18 @@ open System.IO
 open System.Collections.Concurrent
 open Microsoft.FSharp.Quotations.Patterns
 open System.Reflection.Emit
+
+module private Surrogates = 
+
+    type [<CLIMutable>] Optional<'t> = 
+        { HasValue: bool 
+          Item: 't }
+        static member op_Implicit (w: Optional<'t>) : 't option =
+            if w.HasValue then Some w.Item else None
+        static member op_Implicit (o: 't option) =
+            match o with
+            | Some(o) -> { Item = o; HasValue = true }
+            | None -> { HasValue = false; Item = Unchecked.defaultof<_> }
 
 module private MethodHelpers =
     
@@ -119,11 +132,32 @@ type private GenericSetterFactory =
 
 module Serialiser =
     
-    let private processFieldsAndCreateFieldSetters (typeToAdd: Type) (metaType: MetaType )= 
+    let private registerOptionTypesIntoModel (optionType: Type) (model: RuntimeTypeModel) = 
+        
+        let definedTypes = seq {
+            for m in model.GetTypes() do
+            let m = m :?> MetaType
+            yield m.Type
+        }
+        
+        if 
+            optionType.IsGenericType
+            && optionType.GetGenericTypeDefinition() = typedefof<Option<_>>
+            && definedTypes |> Seq.contains optionType |> not
+        then
+            let surrogateType = typedefof<Surrogates.Optional<_>>.MakeGenericType(optionType.GetGenericArguments())
+            let surrogateModelType = model.Add(surrogateType, false)
+            surrogateModelType.Name <- "Optional" + optionType.GetGenericArguments().[0].Name
+            surrogateModelType.AddField(1, "HasValue") |> ignore
+            surrogateModelType.AddField(2, "Item") |> ignore
+            let mt = model.Add(optionType, false)
+            mt.SetSurrogate(surrogateType)
+
+    let private processFieldsAndCreateFieldSetters (typeToAdd: Type) (metaType: MetaType) model = 
+        let fields = typeToAdd.GetFields(BindingFlags.NonPublic ||| BindingFlags.Instance ||| BindingFlags.GetField)
         metaType.UseConstructor <- false
         let _, fieldSetterDelegates =
-        
-            typeToAdd.GetFields(BindingFlags.NonPublic ||| BindingFlags.Instance ||| BindingFlags.GetField)
+            fields
             |> Array.fold
                 (fun (index, delegates) fieldInfo -> 
                     //let mt = mt.Add(fieldInfo.Name)
@@ -137,6 +171,9 @@ module Serialiser =
                     | None -> (index+1, delegates)
                     )
                 (1, [])
+
+        for field in fields do
+            registerOptionTypesIntoModel field.FieldType model
 
         if not fieldSetterDelegates.IsEmpty
         then
@@ -152,7 +189,7 @@ module Serialiser =
         // Register the supertype in all cases
         let mt = model.Add(unionType, true)
         mt.UseConstructor <- false
-        processFieldsAndCreateFieldSetters unionType mt |> ignore
+        processFieldsAndCreateFieldSetters unionType mt model |> ignore
 
         // If there are no fields in any properties then we can assume the F# compiler has compiled
         // the class in a non-flat fashion. Structs are still compiled in a flat way (F# 4.1+ struct DU's).
@@ -192,7 +229,7 @@ module Serialiser =
                     mt.AddSubType(tag, typeToAdd) |> ignore
                     caseTypeModel.UseConstructor <- false
                     caseTypeModel.Name <- ucd.Name
-                    processFieldsAndCreateFieldSetters typeToAdd caseTypeModel |> ignore
+                    processFieldsAndCreateFieldSetters typeToAdd caseTypeModel model |> ignore
         
         model  
 
@@ -201,7 +238,7 @@ module Serialiser =
     let registerRecordRuntimeTypeIntoModel (runtimeType: Type) (model: RuntimeTypeModel) =
         let metaType = model.Add(runtimeType, false)
         metaType.UseConstructor <- false
-        processFieldsAndCreateFieldSetters runtimeType metaType |> ignore
+        processFieldsAndCreateFieldSetters runtimeType metaType model |> ignore
         model
 
     let registerRecordIntoModel<'t> (model: RuntimeTypeModel) = registerRecordRuntimeTypeIntoModel typeof<'t> model
