@@ -132,7 +132,12 @@ type private GenericSetterFactory =
 
 module Serialiser =
     
-    let private registerOptionTypesIntoModel (optionType: Type) (model: RuntimeTypeModel) = 
+    /// Allows users to register option types in advance. You can specify a custom suffix name for the Protobuf wrapper type generated.
+    /// This only needs to be called directly if your type either is not already a field in another type previously registered (e.g. a record or union)
+    /// and/or your not happy with the default type name in case of naming clashes.
+    /// By default if None is provided for the customTypeSuffix parameter for example with Option<string> the protobuf message will be an "OptionalString".
+    /// If the model is already registered (explictly or implicitly via another registration) AND/OR the type passed in is not an option type this will no-op.
+    let registerOptionTypesIntoModel (optionType: Type) customTypeSuffix (model: RuntimeTypeModel) = 
         
         let definedTypes = seq {
             for m in model.GetTypes() do
@@ -147,7 +152,7 @@ module Serialiser =
         then
             let surrogateType = typedefof<Surrogates.Optional<_>>.MakeGenericType(optionType.GetGenericArguments())
             let surrogateModelType = model.Add(surrogateType, false)
-            surrogateModelType.Name <- "Optional" + optionType.GetGenericArguments().[0].Name
+            surrogateModelType.Name <- "Optional" + (customTypeSuffix |> Option.defaultValue (optionType.GetGenericArguments().[0].Name))
             surrogateModelType.AddField(1, "HasValue") |> ignore
             surrogateModelType.AddField(2, "Item") |> ignore
             let mt = model.Add(optionType, false)
@@ -173,7 +178,7 @@ module Serialiser =
                 (1, [])
 
         for field in fields do
-            registerOptionTypesIntoModel field.FieldType model
+            registerOptionTypesIntoModel field.FieldType None model
 
         if not fieldSetterDelegates.IsEmpty
         then
