@@ -9,6 +9,7 @@ open System.IO
 open System.Collections.Concurrent
 open Microsoft.FSharp.Quotations.Patterns
 open System.Reflection.Emit
+open System.Linq.Expressions
 
 module private Surrogates = 
 
@@ -56,8 +57,26 @@ module private MethodHelpers =
         | 0 -> declaringType.GetMethod(nameOfMethod, bindingFlagsToUse)
         | _ -> declaringType.GetMethod(nameOfMethod, bindingFlagsToUse).MakeGenericMethod(typeParameters)        
 
-    let constructObjectWithoutConstructor (typeToConstruct: Type) = 
-        Runtime.Serialization.FormatterServices.GetUninitializedObject(typeToConstruct)
+    let objectConstructor = ConcurrentDictionary<Type, Func<obj>>()
+
+    /// The CLIMutable attribute provides a 
+    let constructObjectWithoutConstructor<'t>() = 
+        
+        let constructorMethod (parameterlessConstructor: ConstructorInfo) = 
+            Expression.Lambda(typeof<Func<obj>>, Expression.Convert(Expression.New(parameterlessConstructor, [||]), typeof<obj>)).Compile() :?> Func<obj>
+        
+        let constructorFunction = 
+            objectConstructor.GetOrAdd(
+                typeof<'t>,
+                (fun (typeToConstruct: Type) -> 
+                    let parameterlessConstructorOpt = typeToConstruct.GetConstructors() |> Seq.tryFind (fun constructor -> constructor.GetParameters().Length = 0)
+                    match parameterlessConstructorOpt with
+                    | Some(constructor) -> // The CLIMutable case. Significant performance can be found here.
+                        constructorMethod constructor
+                    | None -> Func<_>(fun () -> Runtime.Serialization.FormatterServices.GetUninitializedObject(typeToConstruct))
+                )
+            )
+        constructorFunction.Invoke() :?> 't
 
     let staticSetters = new ConcurrentDictionary<Type, Delegate>()   
     let zeroValues = ConcurrentDictionary<Type, obj>() 
@@ -124,7 +143,7 @@ type private GenericSetterFactory =
 
     // The final delegate.
     static member public CreateOrDefault<'t> () = 
-        let item = MethodHelpers.constructObjectWithoutConstructor typeof<'t> :?> 't
+        let item = MethodHelpers.constructObjectWithoutConstructor<'t>()
         match MethodHelpers.staticSetters.TryGetValue(typeof<'t>) with
         | (true, action) -> (action :?> Action<'t>).Invoke(item)
         | (false, _) -> ()

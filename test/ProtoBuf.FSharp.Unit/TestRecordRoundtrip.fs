@@ -20,6 +20,9 @@ type TestRecordOne =
 [<TestName("All optional fields")>]
 type TestRecordTwo = { TwoOne: string option; TwoTwo: int option }
 
+[<TestName("Record CLIMutable type"); CLIMutable>]
+type TestRecordThree = { Three: string; Four: int }
+
 module TestRecordRoundtrip = 
 
     // F# does not allow nulls although FsCheck tries to stress C# interoperability.
@@ -71,4 +74,5 @@ module TestRecordRoundtrip =
             "Record Test Cases" 
             [ yield buildTest<TestRecordOne>; 
               yield buildTest<TestRecordTwo>
+              yield buildTest<TestRecordThree>
               yield! manualTestCases ]
