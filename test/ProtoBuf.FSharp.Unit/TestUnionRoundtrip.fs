@@ -52,6 +52,12 @@ module ExampleTypesInsideModule =
     [<TestName("Union with generic; single case union")>]
     type Wrapper<'t> = | Wrapper of 't
 
+    [<TestName("More than 4 cases; one case with no fields")>]
+    type UnionNine = 
+    | CaseOne of numbers: int array // If any of the above show it.
+    | CaseTwo of strings: string array
+    | CaseThreee of singleData: string
+    | CaseFour
 
 module TestUnionRoundtrip =
 
@@ -71,11 +77,22 @@ module TestUnionRoundtrip =
         let testNameAttribute = typeof<'t>.GetCustomAttributes(typeof<TestNameAttribute>, true) |> Seq.head :?> TestNameAttribute
         testCase testNameAttribute.Name <| fun () -> Check.One(config, propertyToTest<'t>)
 
+    // This test is just to show how the schema will be look like for other consumers. It is expected to fail so isn't used normally.
+    let manualTest = 
+        testCase 
+            "Generate schema" 
+            (fun () ->  
+                let model = RuntimeTypeModel.Create() |> Serialiser.registerUnionIntoModel<ExampleTypesInsideModule.UnionNine>
+                model.CompileInPlace()
+                let schema = model.GetSchema(typeof<ExampleTypesInsideModule.UnionNine>)
+                equal schema "" "Schema generated")
+
     [<Tests>]
     let test() = 
         testList 
             "Union Test Cases" 
-            [ buildTest<ExampleTypesInsideModule.UnionOne>()
+            [ //manualTest
+              buildTest<ExampleTypesInsideModule.UnionOne>()
               buildTest<ExampleTypesInsideModule.UnionTwo>()
               buildTest<ExampleTypesInsideModule.UnionThree>()
               buildTest<ExampleTypesInsideModule.UnionFour>()
@@ -84,4 +101,6 @@ module TestUnionRoundtrip =
               buildTest<ExampleTypesInsideModule.UnionSeven>()
               buildTest<ExampleTypesInsideModule.UnionEight>()
               buildTest<ExampleTypesInsideModule.SerialisableOption<string>>() 
-              buildTest<ExampleTypesInsideModule.Wrapper<string>>() ]
+              buildTest<ExampleTypesInsideModule.Wrapper<string>>()
+              buildTest<ExampleTypesInsideModule.UnionNine>()
+              ]
