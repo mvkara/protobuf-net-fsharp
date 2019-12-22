@@ -250,9 +250,7 @@ module Serialiser =
                                     "Couldn't find expected type for union case [UnionType: %A, InnerCaseName: %s, UnionCaseInfo: %A, CandidateTypes: %A]"
                                     unionType.FullName ucd.Name ucd (candidateTypes |> Seq.map (fun x -> x.FullName))
 
-                    // What I want:
-                    // A wrapper type with the tag and the subtype serialised.
-                    // Can I do that? I think so? The surrogate is somewhat custom though. The below may be the easiest to proceed.
+                    // The union may be a supertype union with no values hence no subtype. Should use the supertype as appropriate and skip this case.
                     match typeToAddOpt with
                     | Some(typeToAdd) ->
                         let caseTypeModel = model.Add(typeToAdd, false)
