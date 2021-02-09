@@ -23,6 +23,18 @@ type TestRecordTwo = { TwoOne: string option; TwoTwo: int option }
 [<TestName("Record CLIMutable type"); CLIMutable>]
 type TestRecordThree = { Three: string; Four: int }
 
+[<TestName("Record with unmanaged mutable field")>]
+type TestRecordFour = {
+    mutable Flag : bool
+    String : string
+}
+
+[<Struct; TestName("Managed value record")>]
+type TestRecordFive = {
+    Flag : bool
+    String : string
+}
+
 module TestRecordRoundtrip = 
 
     // F# does not allow nulls although FsCheck tries to stress C# interoperability.
@@ -72,7 +84,10 @@ module TestRecordRoundtrip =
     let test() = 
         testList 
             "Record Test Cases" 
-            [ yield buildTest<TestRecordOne>; 
+            [ yield buildTest<TestRecordOne>
               yield buildTest<TestRecordTwo>
               yield buildTest<TestRecordThree>
-              yield! manualTestCases ]
+              yield buildTest<TestRecordFour>
+              yield buildTest<TestRecordFive>
+              yield! manualTestCases
+            ]
