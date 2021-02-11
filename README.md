@@ -17,7 +17,7 @@ This library is intended to provide a set of helper functions to allow F# types 
 - Option fields on the above types
 - Empty arrays and strings are populated across the whole object graph during deserialisation to avoid unexpected null's in an F# context.
 
-Currently the non-supported features are mainly around the F# collections (Set, List, etc.). For the moment it is recommended to use arrays in your contract types to be serialised/deserialised. More work is required to support these.
+Currently the non-supported features are mainly around the F# collections (Set, List, etc.) and struct record types due to underlying limitations/validations within the protobuf-net library. For the moment it is recommended to use arrays in your contract types to be serialised/deserialised. More work is required to support these.
 
 ## How to build/test ##
 

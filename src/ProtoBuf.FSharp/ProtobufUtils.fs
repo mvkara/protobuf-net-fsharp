@@ -180,7 +180,7 @@ module Serialiser =
             mt.SetSurrogate(surrogateType)
 
     let private processFieldsAndCreateFieldSetters (typeToAdd: Type) (metaType: MetaType) model =
-        let fields = typeToAdd.GetFields(BindingFlags.NonPublic ||| BindingFlags.Instance ||| BindingFlags.GetField)
+        let fields = typeToAdd.GetFields(BindingFlags.Public ||| BindingFlags.NonPublic ||| BindingFlags.Instance ||| BindingFlags.GetField)
         metaType.UseConstructor <- false
         let _, fieldSetterDelegates =
             fields

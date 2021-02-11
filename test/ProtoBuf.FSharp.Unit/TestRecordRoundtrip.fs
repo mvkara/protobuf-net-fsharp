@@ -23,6 +23,20 @@ type TestRecordTwo = { TwoOne: string option; TwoTwo: int option }
 [<TestName("Record CLIMutable type"); CLIMutable>]
 type TestRecordThree = { Three: string; Four: int }
 
+[<TestName("Record with mutable field")>]
+type TestRecordFour = {
+    mutable Flag : bool
+    String : string
+}
+
+// Struct records are not supported due to limitation of protobuf-net.
+// See https://github.com/protobuf-net/protobuf-net/blob/3.0.62/src/protobuf-net/Meta/RuntimeTypeModel.cs#L1971 (currrent at time of code commit)
+// [<Struct; TestName("Struct Record">]
+// type TestRecordFive = {
+//     Flag : bool
+//     String : string
+// }
+
 module TestRecordRoundtrip = 
 
     // F# does not allow nulls although FsCheck tries to stress C# interoperability.
@@ -75,4 +89,7 @@ module TestRecordRoundtrip =
             [ yield buildTest<TestRecordOne>; 
               yield buildTest<TestRecordTwo>
               yield buildTest<TestRecordThree>
-              yield! manualTestCases ]
+              yield buildTest<TestRecordFour>
+              //yield buildTest<TestRecordFive> // See comment on type for why this isn't supported currently.
+              yield! manualTestCases
+            ]
