@@ -6,146 +6,7 @@ open FSharp.Reflection
 open System
 open System.Reflection
 open System.IO
-open System.Collections.Concurrent
-open Microsoft.FSharp.Quotations.Patterns
-open System.Reflection.Emit
-open System.Linq.Expressions
 
-module private Surrogates =
-
-    type [<CLIMutable>] Optional<'t> =
-        { HasValue: bool
-          Item: 't }
-        static member op_Implicit (w: Optional<'t>) : 't option =
-            if w.HasValue then Some w.Item else None
-        static member op_Implicit (o: 't option) =
-            match o with
-            | Some(o) -> { Item = o; HasValue = true }
-            | None -> { HasValue = false; Item = Unchecked.defaultof<_> }
-
-module private MethodHelpers =
-
-    /// Allows you to get the nameof a method in older F# versions
-    let private nameOfQuotation methodQuotation =
-        match methodQuotation with
-        | Lambda(_, Call(_, mi, _))
-        | Lambda(_, Lambda(_, Call(_, mi, _))) -> mi.DeclaringType, mi.Name
-        | x -> failwithf "Not supported %A" x
-
-    // NOTE: Resorting to Reflection.Emit for private readonly setters since F# types are immutable on the surface.
-    // Expression.Assign for example has a check against setting readonly fields
-    let getFieldInfoSetterDelegate<'t, 'tfield> (fi: FieldInfo) =
-        let methodName = fi.ReflectedType.FullName + "set_" + fi.Name
-        let setterMethod = DynamicMethod(methodName, null, [| typeof<'t>; typeof<'tfield> |], true)
-        let gen = setterMethod.GetILGenerator()
-        if fi.IsStatic
-        then
-            gen.Emit(OpCodes.Ldarg_1)
-            gen.Emit(OpCodes.Stsfld, fi)
-        else
-            gen.Emit(OpCodes.Ldarg_0)
-            gen.Emit(OpCodes.Ldarg_1)
-            gen.Emit(OpCodes.Stfld, fi)
-        gen.Emit(OpCodes.Ret)
-        setterMethod.CreateDelegate(typeof<Action<'t, 'tfield>>) :?> Action<'t, 'tfield>
-
-    let private bindingFlagsToUse = BindingFlags.NonPublic ||| BindingFlags.Static
-
-    let getMethodInfo quotation (typeParameters: Type array) =
-        let (declaringType, nameOfMethod) = nameOfQuotation quotation
-        match typeParameters.Length with
-        | 0 -> declaringType.GetMethod(nameOfMethod, bindingFlagsToUse)
-        | _ -> declaringType.GetMethod(nameOfMethod, bindingFlagsToUse).MakeGenericMethod(typeParameters)
-
-    let objectConstructor = ConcurrentDictionary<Type, Func<obj>>()
-
-    /// The CLIMutable attribute provides a quick way to construct objects. We should use it IF possible over FormatterServices for performance.
-    let constructObjectWithoutConstructor<'t>() =
-
-        let constructorMethod (parameterlessConstructor: ConstructorInfo) =
-            Expression.Lambda(typeof<Func<obj>>, Expression.Convert(Expression.New(parameterlessConstructor, [||]), typeof<obj>)).Compile() :?> Func<obj>
-
-        let constructorFunction =
-            objectConstructor.GetOrAdd(
-                typeof<'t>,
-                (fun (typeToConstruct: Type) ->
-                    let parameterlessConstructorOpt = typeToConstruct.GetConstructors() |> Seq.tryFind (fun constructor -> constructor.GetParameters().Length = 0)
-                    match parameterlessConstructorOpt with
-                    | Some(constructor) -> constructorMethod constructor // The CLIMutable case. Significant performance can be found here.
-                    | None -> Func<_>(fun () -> Runtime.Serialization.FormatterServices.GetUninitializedObject(typeToConstruct))))
-
-        constructorFunction.Invoke() :?> 't
-
-    let staticSetters = new ConcurrentDictionary<Type, Delegate>()
-    let zeroValues = ConcurrentDictionary<Type, obj>()
-
-/// Used to create callbacks that set zero values to support roundtrip serailisation identity for F# types. Something that Protobuf-net doesn't do at time of writing.
-/// This is all about priming the type so that there isn't nulls when doing roundtrip of collections and strings due to Protobuf-net default behaviour.
-type private GenericSetterFactory =
-
-    static member GetEmptyFSharpList<'t>() : 't list = List.empty
-    static member GetEmptyArray<'t>() : 't array = Array.empty
-    static member GetEmptySet<'t when 't : comparison>() : Set<'t> = Set.empty
-    static member GetEmptyMap<'t, 'tv when 't : comparison>() : Map<'t, 'tv> = Map.empty
-
-    static member CalculateZeroValuesIfApplicable (fieldType: Type) =
-
-        /// Creates the zero value for supported types that we know of.
-        let createZeroValue() =
-            if fieldType = typeof<string>
-                then box String.Empty |> Some
-            elif fieldType.IsGenericType && fieldType.GetGenericTypeDefinition() = typedefof<_ list>
-                then
-                    let methodInfo = MethodHelpers.getMethodInfo <@ GenericSetterFactory.GetEmptyFSharpList @> fieldType.GenericTypeArguments
-                    methodInfo.Invoke(null, [||]) |> Some
-            elif fieldType.IsGenericType && fieldType.GetGenericTypeDefinition() = typedefof<Set<_>>
-                then
-                    let methodInfo = MethodHelpers.getMethodInfo <@ GenericSetterFactory.GetEmptySet @> fieldType.GenericTypeArguments
-                    methodInfo.Invoke(null, [||]) |> Some
-            elif fieldType.IsGenericType && fieldType.GetGenericTypeDefinition() = typedefof<Map<_, _>>
-                then
-                    let methodInfo = MethodHelpers.getMethodInfo <@ GenericSetterFactory.GetEmptyMap @> fieldType.GenericTypeArguments
-                    methodInfo.Invoke(null, [||]) |> Some
-            elif fieldType.IsArray
-                then
-                    let methodInfo = MethodHelpers.getMethodInfo <@ GenericSetterFactory.GetEmptyArray @> [| fieldType.GetElementType() |]
-                    methodInfo.Invoke(null, [||]) |> Some
-            else None
-
-        match MethodHelpers.zeroValues.TryGetValue(fieldType) with
-        | (true, zeroValue) -> Some zeroValue
-        | (false, _) ->
-            match createZeroValue() with
-            | Some(zeroValue) ->
-                MethodHelpers.zeroValues.[fieldType] <- zeroValue
-                Some zeroValue
-            | None -> None
-
-    static member GetSetterCallbackGeneric<'t, 'tfield> (fi: FieldInfo) (zeroValue: 'tfield) : Delegate =
-        let d = MethodHelpers.getFieldInfoSetterDelegate<'t, 'tfield> fi
-        ((Action<'t> (fun t -> d.Invoke(t, zeroValue))) :> Delegate) // Manual partial completion of the zeroValue
-
-    static member GetSetterCallbackIfApplicableForFieldInfo (fi: FieldInfo) : Delegate option =
-        let zeroValueOpt = GenericSetterFactory.CalculateZeroValuesIfApplicable fi.FieldType
-
-        match zeroValueOpt with
-        | Some(zeroValue) ->
-            let m = MethodHelpers.getMethodInfo <@ GenericSetterFactory.GetSetterCallbackGeneric @> [||]
-            let gm = m.MakeGenericMethod([| fi.DeclaringType; fi.FieldType |])
-            let gmParemeters = [| box fi; box zeroValue |]
-            gm.Invoke(null, gmParemeters) :?> Delegate |> Some
-        | None -> None
-
-    static member SetNewCreationSetterDelegate fieldType (d: Delegate) =
-        MethodHelpers.staticSetters.TryAdd(fieldType, d) |> ignore
-
-    // The final delegate.
-    static member public CreateOrDefault<'t> () =
-        let item = MethodHelpers.constructObjectWithoutConstructor<'t>()
-        match MethodHelpers.staticSetters.TryGetValue(typeof<'t>) with
-        | (true, action) -> (action :?> Action<'t>).Invoke(item)
-        | (false, _) -> ()
-        item
 
 module Serialiser =
 
@@ -179,35 +40,30 @@ module Serialiser =
             let mt = model.Add(optionType, false)
             mt.SetSurrogate(surrogateType)
 
-    let private processFieldsAndCreateFieldSetters (typeToAdd: Type) (metaType: MetaType) model =
+    let private addFields (metaType : MetaType, fields : FieldInfo[]) =
+        for (index, fieldInfo) in Seq.indexed fields do
+            let fieldModel = metaType.AddField(1 + index, fieldInfo.Name)
+            fieldModel.BackingMember <- fieldInfo
+            fieldModel.OverwriteList <- true
+            fieldModel.Name <- fieldInfo.Name.TrimStart('_').TrimEnd('@') // Still not perfect --- F# allows pretty wild names (some cause protobuf to fail)
+
+    let private processFieldsAndCreateFieldSetters (typeToAdd: Type) (metaType: MetaType) (model : RuntimeTypeModel) =
         let fields = typeToAdd.GetFields(BindingFlags.Public ||| BindingFlags.NonPublic ||| BindingFlags.Instance ||| BindingFlags.GetField)
         metaType.UseConstructor <- false
-        let _, fieldSetterDelegates =
-            fields
-            |> Array.fold
-                (fun (index, delegates) fieldInfo ->
-                    //let mt = mt.Add(fieldInfo.Name)
-                    let fieldModel = metaType.AddField(index, fieldInfo.Name)
-                    fieldModel.BackingMember <- fieldInfo
-                    fieldModel.OverwriteList <- true
-                    fieldModel.Name <- fieldInfo.Name.Replace("@", "").Replace("_", "")
-
-                    match GenericSetterFactory.GetSetterCallbackIfApplicableForFieldInfo fieldInfo with
-                    | Some(d) -> (index+1, d :: delegates)
-                    | None -> (index+1, delegates)
-                    )
-                (1, [])
+        match CodeGen.getMetaInfoType (typeToAdd, fields) with
+        | CodeGen.MetaInfoType.Surrogate surrogateType ->
+            let surrogateMetaType = model.Add(surrogateType, false)
+            surrogateMetaType.UseConstructor <- true
+            addFields (surrogateMetaType, surrogateType.GetFields(BindingFlags.Public ||| BindingFlags.NonPublic ||| BindingFlags.Instance ||| BindingFlags.GetField))
+            metaType.SetSurrogate surrogateType
+        | CodeGen.MetaInfoType.FieldsAndFactory factoryMethod ->
+            addFields (metaType, fields)
+            metaType.SetFactory factoryMethod |> ignore
+        | CodeGen.MetaInfoType.JustFields ->
+            addFields (metaType, fields)
 
         for field in fields do
             registerOptionTypesIntoModel field.FieldType None model
-
-        if not fieldSetterDelegates.IsEmpty
-        then
-            let setterDelegate = Delegate.Combine(fieldSetterDelegates |> List.toArray)
-            GenericSetterFactory.SetNewCreationSetterDelegate typeToAdd setterDelegate
-            let factoryMethodInfo = MethodHelpers.getMethodInfo <@ GenericSetterFactory.CreateOrDefault @> [| typeToAdd |]
-            metaType.SetFactory(factoryMethodInfo)
-        else metaType
 
     let registerUnionRuntimeTypeIntoModel (unionType: Type) (model: RuntimeTypeModel) =
         let unionCaseData = FSharpType.GetUnionCases(unionType, true)
@@ -273,9 +129,9 @@ module Serialiser =
     let registerRecordIntoModel<'t> (model: RuntimeTypeModel) = registerRecordRuntimeTypeIntoModel typeof<'t> model
 
     let registerRuntimeTypeIntoModel (runtimeType: Type) (model: RuntimeTypeModel) =
-        if FSharpType.IsRecord runtimeType
+        if FSharpType.IsRecord (runtimeType, true)
         then registerRecordRuntimeTypeIntoModel runtimeType model
-        elif FSharpType.IsUnion runtimeType
+        elif FSharpType.IsUnion (runtimeType, true)
         then registerUnionRuntimeTypeIntoModel runtimeType model
         else
             model.Add(runtimeType, true) |> ignore
