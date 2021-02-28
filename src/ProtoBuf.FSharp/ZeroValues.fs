@@ -5,11 +5,15 @@ open System.Collections.Concurrent
 open System.Reflection
 
 
-let GetEmptyString() : string = String.Empty
-let GetEmptyFSharpList<'t>() : 't list = List.empty
-let GetEmptyArray<'t>() : 't array = Array.empty
-let GetEmptySet<'t when 't : comparison>() : Set<'t> = Set.empty
-let GetEmptyMap<'t, 'tv when 't : comparison>() : Map<'t, 'tv> = Map.empty
+let getEmptyString() : string = String.Empty
+
+let getEmptyFSharpList<'t>() : 't list = List.empty
+
+let getEmptyArray<'t>() : 't array = Array.empty
+
+let getEmptySet<'t when 't : comparison>() : Set<'t> = Set.empty
+
+let getEmptyMap<'t, 'tv when 't : comparison>() : Map<'t, 'tv> = Map.empty
 
 
 let private zeroValues = ConcurrentDictionary<Type, MethodInfo>()
@@ -18,15 +22,15 @@ let calculateIfApplicable (fieldType: Type) =
     /// Creates the zero value for supported types that we know of.
     let createZeroValue() =
         if fieldType = typeof<string> then
-            MethodHelpers.getMethodInfo <@ GetEmptyString @> [| |] |> Some
+            MethodHelpers.getMethodInfo <@ getEmptyString @> [| |] |> Some
         elif fieldType.IsGenericType && fieldType.GetGenericTypeDefinition() = typedefof<_ list> then
-            MethodHelpers.getMethodInfo <@ GetEmptyFSharpList @> fieldType.GenericTypeArguments |> Some
+            MethodHelpers.getMethodInfo <@ getEmptyFSharpList @> fieldType.GenericTypeArguments |> Some
         elif fieldType.IsGenericType && fieldType.GetGenericTypeDefinition() = typedefof<Set<_>> then
-            MethodHelpers.getMethodInfo <@ GetEmptySet @> fieldType.GenericTypeArguments |> Some
+            MethodHelpers.getMethodInfo <@ getEmptySet @> fieldType.GenericTypeArguments |> Some
         elif fieldType.IsGenericType && fieldType.GetGenericTypeDefinition() = typedefof<Map<_, _>> then
-            MethodHelpers.getMethodInfo <@ GetEmptyMap @> fieldType.GenericTypeArguments |> Some
+            MethodHelpers.getMethodInfo <@ getEmptyMap @> fieldType.GenericTypeArguments |> Some
         elif fieldType.IsArray then
-            MethodHelpers.getMethodInfo <@ GetEmptyArray @> [| fieldType.GetElementType() |] |> Some
+            MethodHelpers.getMethodInfo <@ getEmptyArray @> [| fieldType.GetElementType() |] |> Some
         else None
 
     match zeroValues.TryGetValue(fieldType) with

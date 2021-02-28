@@ -1,4 +1,4 @@
-module private ProtoBuf.FSharp.Surrogates
+namespace ProtoBuf.FSharp.Surrogates
 
 
 type [<CLIMutable>] Optional<'t> =

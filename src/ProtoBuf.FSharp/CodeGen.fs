@@ -18,22 +18,30 @@ let private emitFieldAssignments (gen : ILGenerator, assigns : struct (FieldInfo
             gen.Emit(OpCodes.Stfld, fi)
 
 
+let private emitRecordDefault (gen : ILGenerator, recordType : Type) =
+    for pi in FSharpType.GetRecordFields (recordType, true) do
+        let tp = pi.PropertyType
+        match ZeroValues.calculateIfApplicable tp with
+        | Some getValue ->
+            gen.EmitCall(OpCodes.Call, getValue, null)
+        | _ when tp.IsValueType ->
+            let cell = gen.DeclareLocal(tp)
+            gen.Emit(OpCodes.Ldloca_S, cell)
+            gen.Emit(OpCodes.Initobj, tp)
+            gen.Emit(OpCodes.Ldloc, cell)
+        | _ ->
+            gen.Emit(OpCodes.Ldnull)
+    let ctr = FSharpValue.PreComputeRecordConstructorInfo (recordType, true)
+    gen.Emit (OpCodes.Newobj, ctr)
+
+
 let private emitFactory (resultType : Type, assigns) =
     let factoryMethod = DynamicMethod("factory_" + resultType.FullName, resultType, [| |], true)
     let gen = factoryMethod.GetILGenerator()
 
     match resultType.GetConstructor [| |] with
     | null when FSharpType.IsRecord (resultType, true) ->
-        for pi in FSharpType.GetRecordFields (resultType, true) do
-            let tp = pi.PropertyType
-            match ZeroValues.calculateIfApplicable tp with
-            | Some getValue -> gen.EmitCall(OpCodes.Call, getValue, null)
-            | _ when tp.IsValueType ->
-                let cell = gen.DeclareLocal(tp)
-                gen.Emit(OpCodes.Ldloca_S, cell)
-            | _ -> gen.Emit(OpCodes.Ldnull)
-        let ctr = FSharpValue.PreComputeRecordConstructorInfo (resultType, true)
-        gen.Emit (OpCodes.Newobj, ctr)
+        emitRecordDefault (gen, resultType)
     | null ->
         gen.Emit(OpCodes.Ldtoken, resultType)
         gen.EmitCall(OpCodes.Call, MethodHelpers.getMethodInfo <@ Runtime.Serialization.FormatterServices.GetUninitializedObject @> [||], null)
@@ -48,7 +56,7 @@ let private emitFactory (resultType : Type, assigns) =
 
 let private emitRecordSurrogate (surrogateModule : ModuleBuilder, recordType : Type, useValueTypeSurrogate : bool) =
     let surrogateType =
-        let name = recordType.Name + "Surrogate"
+        let name = sprintf "%s.Generated.%s" (nameof ProtoBuf.FSharp.Surrogates) recordType.FullName
         let attr = TypeAttributes.Public ||| TypeAttributes.Sealed ||| TypeAttributes.Serializable
         if useValueTypeSurrogate then
             surrogateModule.DefineType (name, attr, typeof<ValueType>)
@@ -63,6 +71,11 @@ let private emitRecordSurrogate (surrogateModule : ModuleBuilder, recordType : T
     let constructor =
         let ctr = surrogateType.DefineConstructor (MethodAttributes.Public, CallingConventions.Standard, [| |])
         let gen = ctr.GetILGenerator ()
+
+        if not surrogateType.IsValueType then
+            gen.Emit(OpCodes.Ldarg_0)
+            gen.Emit(OpCodes.Call, typeof<obj>.GetConstructor [||])
+
         for (field, surrogateField) in surrogateFields do
             ZeroValues.calculateIfApplicable field.PropertyType |> Option.iter (fun getValue ->
                 gen.Emit((if surrogateType.IsValueType then OpCodes.Ldarga_S else OpCodes.Ldarg), 0)
