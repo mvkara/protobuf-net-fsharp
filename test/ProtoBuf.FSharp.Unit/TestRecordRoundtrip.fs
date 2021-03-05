@@ -29,13 +29,33 @@ type TestRecordFour = {
     String : string
 }
 
-// Struct records are not supported due to limitation of protobuf-net.
-// See https://github.com/protobuf-net/protobuf-net/blob/3.0.62/src/protobuf-net/Meta/RuntimeTypeModel.cs#L1971 (currrent at time of code commit)
-// [<Struct; TestName("Struct Record">]
-// type TestRecordFive = {
-//     Flag : bool
-//     String : string
-// }
+
+[<Struct; TestName("Struct Record")>]
+type TestRecordFive = {
+    Flag : bool
+    String : string
+}
+
+type TestEnum =
+    | OptionA = 1uy
+    | OptionB = 2uy
+    | OptionC = 69uy
+
+[<TestName("Internal Record")>]
+type TestRecordSix = internal {
+    Field : struct (int * bool * int64)
+    Number : int64
+    DecimalNumber : decimal
+    EnumField : TestEnum
+    String : string
+    Date : System.DateTime
+}
+
+[<Struct; TestName("Struct Record with weird field names")>]
+type TestRecordSeven = {
+    ``__$uperF!eld__`` : bool
+    ``String#`` : string
+}
 
 module TestRecordRoundtrip = 
 
@@ -90,6 +110,8 @@ module TestRecordRoundtrip =
               yield buildTest<TestRecordTwo>
               yield buildTest<TestRecordThree>
               yield buildTest<TestRecordFour>
-              //yield buildTest<TestRecordFive> // See comment on type for why this isn't supported currently.
+              yield buildTest<TestRecordFive>
+              yield buildTest<TestRecordSix>
+              yield buildTest<TestRecordSeven>
               yield! manualTestCases
             ]
