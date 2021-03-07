@@ -6,141 +6,140 @@ open System.Collections.Concurrent
 open System.Reflection
 open System.Reflection.Emit
 
-
-let private emitFieldAssignments (gen : ILGenerator, assigns : struct (FieldInfo * MethodInfo)[]) =
-    for (fi, getValue) in assigns do
-        if fi.IsStatic then
-            gen.EmitCall(OpCodes.Call, getValue, null)
-            gen.Emit(OpCodes.Stsfld, fi)
+let private emitFieldAssignments (gen: ILGenerator) (zeroValuesPerField: ZeroValues.FieldWithZeroValueSetMethod[]) =
+    for zeroValueField in zeroValuesPerField do
+        if zeroValueField.FieldInfo.IsStatic then
+            gen.EmitCall(OpCodes.Call, zeroValueField.ZeroValueMethod, null)
+            gen.Emit(OpCodes.Stsfld, zeroValueField.FieldInfo)
         else
             gen.Emit(OpCodes.Dup)
-            gen.EmitCall(OpCodes.Call, getValue, null)
-            gen.Emit(OpCodes.Stfld, fi)
+            gen.EmitCall(OpCodes.Call, zeroValueField.ZeroValueMethod, null)
+            gen.Emit(OpCodes.Stfld, zeroValueField.FieldInfo)
 
+let private emitRecordDefault (gen: ILGenerator) (recordType: Type) =
+    for pi in FSharpType.GetRecordFields(recordType, true) do
+        let propertyType = pi.PropertyType
 
-let private emitRecordDefault (gen : ILGenerator, recordType : Type) =
-    for pi in FSharpType.GetRecordFields (recordType, true) do
-        let tp = pi.PropertyType
-        match ZeroValues.calculateIfApplicable tp with
-        | Some getValue ->
-            gen.EmitCall(OpCodes.Call, getValue, null)
-        | _ when tp.IsValueType ->
-            let cell = gen.DeclareLocal(tp)
+        match ZeroValues.getZeroValueMethodInfoOpt propertyType with
+        | Some getValueMethodInfo ->
+            gen.EmitCall(OpCodes.Call, getValueMethodInfo, null)
+        | _ when propertyType.IsValueType ->
+            let cell = gen.DeclareLocal(propertyType)
             gen.Emit(OpCodes.Ldloca_S, cell)
-            gen.Emit(OpCodes.Initobj, tp)
+            gen.Emit(OpCodes.Initobj, propertyType)
             gen.Emit(OpCodes.Ldloc, cell)
         | _ ->
             gen.Emit(OpCodes.Ldnull)
-    let ctr = FSharpValue.PreComputeRecordConstructorInfo (recordType, true)
-    gen.Emit (OpCodes.Newobj, ctr)
 
+    let ctr = FSharpValue.PreComputeRecordConstructorInfo(recordType, true)
+    gen.Emit(OpCodes.Newobj, ctr)
 
-let private emitFactory (resultType : Type, assigns) =
+/// Emits a factory to create the object making sure all values are default assigned as expected for F# consumption (e.g. no nulls where not possible to define for common cases)
+let private emitFactory (resultType : Type) (zeroValuesPerField: ZeroValues.FieldWithZeroValueSetMethod array) =
     let factoryMethod = DynamicMethod("factory_" + resultType.FullName, resultType, [| |], true)
     let gen = factoryMethod.GetILGenerator()
 
-    match resultType.GetConstructor [| |] with
-    | null when FSharpType.IsRecord (resultType, true) ->
-        emitRecordDefault (gen, resultType)
-    | null ->
+    match resultType.GetConstructor Array.empty with
+    | null when FSharpType.IsRecord (resultType, true) -> // Is an F# record with a F# constructor.
+        emitRecordDefault gen resultType
+    | null -> // Is a type that isn't a record with no parameterless constructor. NOTE: This is significantly slower for deserialisation than alternative pathways.
         gen.Emit(OpCodes.Ldtoken, resultType)
         gen.EmitCall(OpCodes.Call, MethodHelpers.getMethodInfo <@ Runtime.Serialization.FormatterServices.GetUninitializedObject @> [||], null)
-        emitFieldAssignments (gen, assigns)
-    | ctr ->
-        gen.Emit (OpCodes.Newobj, ctr)
-        emitFieldAssignments (gen, assigns)
+        emitFieldAssignments gen zeroValuesPerField
+    | ctr -> // Has a parameterless constructor
+        gen.Emit(OpCodes.Newobj, ctr)
+        emitFieldAssignments gen zeroValuesPerField
 
     gen.Emit(OpCodes.Ret)
     factoryMethod :> MethodInfo
 
-
-let private emitRecordSurrogate (surrogateModule : ModuleBuilder, recordType : Type, useValueTypeSurrogate : bool) =
+/// Emits a record surrogate. Intended to be used to support value type records ONLY since Protobuf-net at time of writing does not support custom ValueTypes/Structs.
+let private emitRecordSurrogate (surrogateModule: ModuleBuilder) (recordType: Type) (useValueTypeSurrogate: bool) =
     let surrogateType =
         let name = sprintf "%s.Generated.%s" (nameof ProtoBuf.FSharp.Surrogates) recordType.FullName
         let attr = TypeAttributes.Public ||| TypeAttributes.Sealed ||| TypeAttributes.Serializable
-        if useValueTypeSurrogate then
-            surrogateModule.DefineType (name, attr, typeof<ValueType>)
-        else
-            surrogateModule.DefineType (name, attr)
+        if useValueTypeSurrogate
+        then surrogateModule.DefineType(name, attr, typeof<ValueType>)
+        else surrogateModule.DefineType(name, attr)
 
     let surrogateFields = [|
-        for fi in FSharpType.GetRecordFields (recordType, true) ->
-            struct (fi, surrogateType.DefineField (fi.Name, fi.PropertyType, FieldAttributes.Public))
+        for fi in FSharpType.GetRecordFields(recordType, true) ->
+            struct (fi, surrogateType.DefineField(fi.Name, fi.PropertyType, FieldAttributes.Public))
     |]
 
     let constructor =
-        let ctr = surrogateType.DefineConstructor (MethodAttributes.Public, CallingConventions.Standard, [| |])
-        let gen = ctr.GetILGenerator ()
+        let ctr = surrogateType.DefineConstructor(MethodAttributes.Public, CallingConventions.Standard, [| |])
+        let gen = ctr.GetILGenerator()
 
-        if not surrogateType.IsValueType then
+        if not surrogateType.IsValueType
+        then
             gen.Emit(OpCodes.Ldarg_0)
             gen.Emit(OpCodes.Call, typeof<obj>.GetConstructor [||])
 
         for (field, surrogateField) in surrogateFields do
-            ZeroValues.calculateIfApplicable field.PropertyType |> Option.iter (fun getValue ->
+            ZeroValues.getZeroValueMethodInfoOpt field.PropertyType
+            |> Option.iter (fun getValue ->
                 gen.Emit((if surrogateType.IsValueType then OpCodes.Ldarga_S else OpCodes.Ldarg), 0)
                 gen.EmitCall(OpCodes.Call, getValue, null)
-                gen.Emit(OpCodes.Stfld, surrogateField)
-            )
+                gen.Emit(OpCodes.Stfld, surrogateField))
+
         gen.Emit(OpCodes.Ret)
         ctr
 
     let attr = MethodAttributes.Public ||| MethodAttributes.HideBySig ||| MethodAttributes.SpecialName ||| MethodAttributes.Static
-    do
-        let conv = surrogateType.DefineMethod ("op_Implicit", attr, recordType, [| surrogateType |])
-        let gen = conv.GetILGenerator ()
-        let ctr = FSharpValue.PreComputeRecordConstructorInfo (recordType, true)
-        for (_, surrogateField) in surrogateFields do
-            gen.Emit((if surrogateType.IsValueType then OpCodes.Ldarga_S else OpCodes.Ldarg), 0)
-            gen.Emit(OpCodes.Ldfld, surrogateField)
-        gen.Emit(OpCodes.Newobj, ctr)
-        gen.Emit(OpCodes.Ret)
 
-    do
-        let conv = surrogateType.DefineMethod ("op_Implicit", attr, surrogateType, [| recordType |])
-        let gen = conv.GetILGenerator ()
-        gen.Emit(OpCodes.Newobj, constructor)
+    // Define op_Implicit methods that Protobuf calls to create recordType from surrogate.
+    let conv = surrogateType.DefineMethod("op_Implicit", attr, recordType, [| surrogateType |])
+    let gen = conv.GetILGenerator()
+    let ctr = FSharpValue.PreComputeRecordConstructorInfo(recordType, true)
+    for (_, surrogateField) in surrogateFields do
+        gen.Emit((if surrogateType.IsValueType then OpCodes.Ldarga_S else OpCodes.Ldarg), 0)
+        gen.Emit(OpCodes.Ldfld, surrogateField)
+    gen.Emit(OpCodes.Newobj, ctr)
+    gen.Emit(OpCodes.Ret)
 
-        let toEnd = gen.DefineLabel()
-        if not recordType.IsValueType then
-            gen.Emit(OpCodes.Ldarg_0)
-            gen.Emit(OpCodes.Brfalse, toEnd)
+    // Define op_Implicit methods that Protobuf calls to create surrogate from recordType.
+    let conv = surrogateType.DefineMethod("op_Implicit", attr, surrogateType, [| recordType |])
+    let gen = conv.GetILGenerator()
+    gen.Emit(OpCodes.Newobj, constructor)
 
-        let cell = gen.DeclareLocal(surrogateType)
-        gen.Emit(OpCodes.Stloc, cell)
-        for (recordField, surrogateField) in surrogateFields do
-            gen.Emit((if surrogateType.IsValueType then OpCodes.Ldloca_S else OpCodes.Ldloc), cell)
-            gen.Emit((if recordType.IsValueType then OpCodes.Ldarga_S else OpCodes.Ldarg), 0)
-            gen.Emit(OpCodes.Call, recordField.GetMethod)
-            gen.Emit(OpCodes.Stfld, surrogateField)
-        gen.Emit(OpCodes.Ldloc, cell)
+    let toEnd = gen.DefineLabel()
+    if not recordType.IsValueType
+    then
+        gen.Emit(OpCodes.Ldarg_0)
+        gen.Emit(OpCodes.Brfalse, toEnd)
 
-        gen.MarkLabel(toEnd)
-        gen.Emit(OpCodes.Ret)
+    let cell = gen.DeclareLocal(surrogateType)
+    gen.Emit(OpCodes.Stloc, cell)
+    for (recordField, surrogateField) in surrogateFields do
+        gen.Emit((if surrogateType.IsValueType then OpCodes.Ldloca_S else OpCodes.Ldloc), cell)
+        gen.Emit((if recordType.IsValueType then OpCodes.Ldarga_S else OpCodes.Ldarg), 0)
+        gen.Emit(OpCodes.Call, recordField.GetMethod)
+        gen.Emit(OpCodes.Stfld, surrogateField)
+    gen.Emit(OpCodes.Ldloc, cell)
+
+    gen.MarkLabel(toEnd)
+    gen.Emit(OpCodes.Ret)
 
     surrogateType.CreateTypeInfo ()
 
-
-[<Struct; RequireQualifiedAccess>]
-type MetaInfoType =
-    | JustFields
-    | FieldsAndFactory of factoryMethod : MethodInfo
-    | Surrogate of surrogateType : TypeInfo
-
+[<RequireQualifiedAccess>]
+type internal TypeConstructionStrategy =
+    | NoCustomConstructor // Uses default Protobuf-net behaviour
+    | CustomFactoryMethod of factoryMethod : MethodInfo
+    | ObjectSurrogate of surrogateType : TypeInfo
 
 let private surrogateAssembly = AssemblyBuilder.DefineDynamicAssembly (AssemblyName("SurrogateAssembly"), AssemblyBuilderAccess.Run)
 let private surrogateModule = surrogateAssembly.DefineDynamicModule "SurrogateModule"
+let private metaInfoTypeCache = ConcurrentDictionary<Type, TypeConstructionStrategy> ()
 
-let private metaInfoTypeCache = ConcurrentDictionary<Type, MetaInfoType> ()
-
-let getMetaInfoType (typeToAdd : Type, fields : FieldInfo[]) =
-    let assigns = ZeroValues.calculateApplicableFields fields
-    if Array.isEmpty assigns then
-        MetaInfoType.JustFields
+let getTypeConstructionMethod (typeToAdd : Type) (fields : FieldInfo[]) =
+    let zeroValuesForFields = ZeroValues.calculateApplicableFields fields
+    if Array.isEmpty zeroValuesForFields
+    then TypeConstructionStrategy.NoCustomConstructor
     else
-        metaInfoTypeCache.GetOrAdd (typeToAdd, fun _ ->
-            if typeToAdd.IsValueType && FSharpType.IsRecord (typeToAdd, true) then
-                emitRecordSurrogate (surrogateModule, typeToAdd, typeToAdd.IsValueType) |> MetaInfoType.Surrogate
-            else
-                emitFactory (typeToAdd, assigns) |> MetaInfoType.FieldsAndFactory
+        metaInfoTypeCache.GetOrAdd(typeToAdd, fun _ ->
+            if typeToAdd.IsValueType && FSharpType.IsRecord (typeToAdd, true)
+            then emitRecordSurrogate surrogateModule typeToAdd typeToAdd.IsValueType |> TypeConstructionStrategy.ObjectSurrogate
+            else emitFactory typeToAdd zeroValuesForFields |> TypeConstructionStrategy.CustomFactoryMethod
         )

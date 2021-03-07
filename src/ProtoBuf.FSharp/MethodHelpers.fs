@@ -4,7 +4,6 @@ open System
 open Microsoft.FSharp.Quotations.Patterns
 open System.Reflection
 
-
 /// Allows you to get the nameof a method in older F# versions
 let private nameOfQuotation methodQuotation =
     match methodQuotation with

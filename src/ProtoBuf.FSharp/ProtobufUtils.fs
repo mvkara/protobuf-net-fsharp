@@ -7,7 +7,6 @@ open System
 open System.Reflection
 open System.IO
 
-
 module Serialiser =
 
     /// The magic number where if a union type has more than the above cases it simply is a tagged instance of the parent type.
@@ -40,7 +39,7 @@ module Serialiser =
             let mt = model.Add(optionType, false)
             mt.SetSurrogate(surrogateType)
 
-    let private addFields (metaType : MetaType, fields : FieldInfo[]) =
+    let private addFieldsToMetaType (metaType : MetaType) (fields : FieldInfo[]) =
         for (index, fieldInfo) in Seq.indexed fields do
             let fieldModel = metaType.AddField(1 + index, fieldInfo.Name)
             fieldModel.BackingMember <- fieldInfo
@@ -50,20 +49,20 @@ module Serialiser =
     let private processFieldsAndCreateFieldSetters (typeToAdd: Type) (metaType: MetaType) (model : RuntimeTypeModel) =
         let fields = typeToAdd.GetFields(BindingFlags.Public ||| BindingFlags.NonPublic ||| BindingFlags.Instance ||| BindingFlags.GetField)
         metaType.UseConstructor <- false
-        match CodeGen.getMetaInfoType (typeToAdd, fields) with
-        | CodeGen.MetaInfoType.Surrogate surrogateType ->
+        match CodeGen.getTypeConstructionMethod typeToAdd fields with
+        | CodeGen.TypeConstructionStrategy.ObjectSurrogate surrogateType ->
             let surrogateMetaType = model.Add(surrogateType, false)
             surrogateMetaType.UseConstructor <- true
-            addFields (surrogateMetaType, surrogateType.GetFields(BindingFlags.Public ||| BindingFlags.NonPublic ||| BindingFlags.Instance ||| BindingFlags.GetField))
+            let surrogateTypeFields = surrogateType.GetFields(BindingFlags.Public ||| BindingFlags.NonPublic ||| BindingFlags.Instance ||| BindingFlags.GetField)
+            addFieldsToMetaType surrogateMetaType surrogateTypeFields
             metaType.SetSurrogate surrogateType
-        | CodeGen.MetaInfoType.FieldsAndFactory factoryMethod ->
-            addFields (metaType, fields)
+        | CodeGen.TypeConstructionStrategy.CustomFactoryMethod factoryMethod ->
+            addFieldsToMetaType metaType fields
             metaType.SetFactory factoryMethod |> ignore
-        | CodeGen.MetaInfoType.JustFields ->
-            addFields (metaType, fields)
+        | CodeGen.TypeConstructionStrategy.NoCustomConstructor ->
+            addFieldsToMetaType metaType fields
 
-        for field in fields do
-            registerOptionTypesIntoModel field.FieldType None model
+        for field in fields do registerOptionTypesIntoModel field.FieldType None model
 
     let registerUnionRuntimeTypeIntoModel (unionType: Type) (model: RuntimeTypeModel) =
         let unionCaseData = FSharpType.GetUnionCases(unionType, true)

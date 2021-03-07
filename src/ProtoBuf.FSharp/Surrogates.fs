@@ -1,6 +1,5 @@
 namespace ProtoBuf.FSharp.Surrogates
 
-
 type [<CLIMutable>] Optional<'t> =
     { HasValue: bool
       Item: 't }
