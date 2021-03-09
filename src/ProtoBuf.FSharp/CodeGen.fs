@@ -1,19 +1,33 @@
-module private ProtoBuf.FSharp.CodeGen
+module internal ProtoBuf.FSharp.CodeGen
 
 open System
 open FSharp.Reflection
 open System.Collections.Concurrent
 open System.Reflection
 open System.Reflection.Emit
+open MethodHelpers
+
+
+let inline emitZeroValueOntoEvaluationStack (gen: ILGenerator) (getterType: MethodType) = 
+    match getterType with
+    | MethodType.MethodInfo mi  ->
+        gen.EmitCall(OpCodes.Call, mi, null) 
+    | MethodType.PropertyInfo pi -> 
+        gen.EmitCall(OpCodes.Call, pi.GetMethod, null) 
+    | MethodType.FieldInfo fi ->
+        gen.Emit(OpCodes.Ldsfld, fi)
+    | MethodType.NewArray t -> 
+        gen.Emit(OpCodes.Ldc_I4_0) // Push length onto the stack.
+        gen.Emit(OpCodes.Newarr, t) // Initialise array with length.
 
 let private emitFieldAssignments (gen: ILGenerator) (zeroValuesPerField: ZeroValues.FieldWithZeroValueSetMethod[]) =
     for zeroValueField in zeroValuesPerField do
         if zeroValueField.FieldInfo.IsStatic then
-            gen.EmitCall(OpCodes.Call, zeroValueField.ZeroValueMethod, null)
-            gen.Emit(OpCodes.Stsfld, zeroValueField.FieldInfo)
+            emitZeroValueOntoEvaluationStack gen zeroValueField.ZeroValueMethod
+            gen.Emit(OpCodes.Stsfld, zeroValueField.FieldInfo) // Assign to field
         else
             gen.Emit(OpCodes.Dup)
-            gen.EmitCall(OpCodes.Call, zeroValueField.ZeroValueMethod, null)
+            emitZeroValueOntoEvaluationStack gen zeroValueField.ZeroValueMethod
             gen.Emit(OpCodes.Stfld, zeroValueField.FieldInfo)
 
 let private emitRecordDefault (gen: ILGenerator) (recordType: Type) =
@@ -22,7 +36,7 @@ let private emitRecordDefault (gen: ILGenerator) (recordType: Type) =
 
         match ZeroValues.getZeroValueMethodInfoOpt propertyType with
         | Some getValueMethodInfo ->
-            gen.EmitCall(OpCodes.Call, getValueMethodInfo, null)
+            emitZeroValueOntoEvaluationStack gen getValueMethodInfo
         | _ when propertyType.IsValueType ->
             let cell = gen.DeclareLocal(propertyType)
             gen.Emit(OpCodes.Ldloca_S, cell)
@@ -80,7 +94,7 @@ let private emitRecordSurrogate (surrogateModule: ModuleBuilder) (recordType: Ty
             ZeroValues.getZeroValueMethodInfoOpt field.PropertyType
             |> Option.iter (fun getValue ->
                 gen.Emit((if surrogateType.IsValueType then OpCodes.Ldarga_S else OpCodes.Ldarg), 0)
-                gen.EmitCall(OpCodes.Call, getValue, null)
+                emitZeroValueOntoEvaluationStack gen getValue
                 gen.Emit(OpCodes.Stfld, surrogateField))
 
         gen.Emit(OpCodes.Ret)
@@ -129,9 +143,9 @@ type internal TypeConstructionStrategy =
     | CustomFactoryMethod of factoryMethod : MethodInfo
     | ObjectSurrogate of surrogateType : TypeInfo
 
-let private surrogateAssembly = AssemblyBuilder.DefineDynamicAssembly (AssemblyName("SurrogateAssembly"), AssemblyBuilderAccess.Run)
+let private surrogateAssembly = AssemblyBuilder.DefineDynamicAssembly(AssemblyName("SurrogateAssembly"), AssemblyBuilderAccess.Run)
 let private surrogateModule = surrogateAssembly.DefineDynamicModule "SurrogateModule"
-let private metaInfoTypeCache = ConcurrentDictionary<Type, TypeConstructionStrategy> ()
+let private metaInfoTypeCache = ConcurrentDictionary<Type, TypeConstructionStrategy>()
 
 let getTypeConstructionMethod (typeToAdd : Type) (fields : FieldInfo[]) =
     let zeroValuesForFields = ZeroValues.calculateApplicableFields fields
