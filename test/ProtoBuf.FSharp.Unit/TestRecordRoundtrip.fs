@@ -78,7 +78,7 @@ type StructRecordWithCollectionTestCases = {
     Name: string
 }
 
-[<Struct; TestName("Struct record with inner complex types")>]
+[<Struct; TestName("Struct record with inner complex types", [| typeof<InnerNestedRecordWithCollections> |])>]
 type StructRecordWithNestedTypes = {
     DataCollection: InnerNestedRecordWithCollections array
     Data: InnerNestedRecordWithCollections
