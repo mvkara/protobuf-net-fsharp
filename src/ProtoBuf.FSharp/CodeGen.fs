@@ -81,23 +81,15 @@ let private emitRecordSurrogate (surrogateModule: ModuleBuilder) (recordType: Ty
     |]
 
     let constructor =
-        let ctr = surrogateType.DefineConstructor(MethodAttributes.Public, CallingConventions.Standard, [| |])
-        let gen = ctr.GetILGenerator()
-
-        if not surrogateType.IsValueType
-        then
+        if surrogateType.IsValueType
+        then ValueNone
+        else
+            let ctr = surrogateType.DefineConstructor(MethodAttributes.Public, CallingConventions.Standard, [| |])
+            let gen = ctr.GetILGenerator()
             gen.Emit(OpCodes.Ldarg_0)
             gen.Emit(OpCodes.Call, typeof<obj>.GetConstructor [||])
-
-        for (field, surrogateField) in surrogateFields do
-            ZeroValues.getZeroValueMethodInfoOpt field.PropertyType
-            |> Option.iter (fun getValue ->
-                gen.Emit((if surrogateType.IsValueType then OpCodes.Ldarga_S else OpCodes.Ldarg), 0)
-                emitZeroValueOntoEvaluationStack gen getValue
-                gen.Emit(OpCodes.Stfld, surrogateField))
-
-        gen.Emit(OpCodes.Ret)
-        ctr
+            gen.Emit(OpCodes.Ret)
+            ValueSome ctr
 
     let attr = MethodAttributes.Public ||| MethodAttributes.HideBySig ||| MethodAttributes.SpecialName ||| MethodAttributes.Static
 
@@ -105,33 +97,47 @@ let private emitRecordSurrogate (surrogateModule: ModuleBuilder) (recordType: Ty
     let conv = surrogateType.DefineMethod("op_Implicit", attr, recordType, [| surrogateType |])
     let gen = conv.GetILGenerator()
     let ctr = FSharpValue.PreComputeRecordConstructorInfo(recordType, true)
-    for (_, surrogateField) in surrogateFields do
+    for (recordField, surrogateField) in surrogateFields do
         gen.Emit((if surrogateType.IsValueType then OpCodes.Ldarga_S else OpCodes.Ldarg), 0)
         gen.Emit(OpCodes.Ldfld, surrogateField)
+        ZeroValues.getZeroValueMethodInfoOpt recordField.PropertyType |> Option.iter (fun getValue ->
+            let skip = gen.DefineLabel()
+            gen.Emit(OpCodes.Dup)
+            gen.Emit(OpCodes.Brtrue, skip)
+            gen.Emit(OpCodes.Pop)
+            emitZeroValueOntoEvaluationStack gen getValue
+            gen.MarkLabel(skip)
+        )
     gen.Emit(OpCodes.Newobj, ctr)
     gen.Emit(OpCodes.Ret)
 
     // Define op_Implicit methods that Protobuf calls to create surrogate from recordType.
     let conv = surrogateType.DefineMethod("op_Implicit", attr, surrogateType, [| recordType |])
     let gen = conv.GetILGenerator()
-    gen.Emit(OpCodes.Newobj, constructor)
 
-    let toEnd = gen.DefineLabel()
+    let cell = gen.DeclareLocal(surrogateType)
+    match constructor with
+    | ValueSome ctr ->
+        gen.Emit(OpCodes.Newobj, ctr)
+        gen.Emit(OpCodes.Stloc, cell)
+    | ValueNone ->
+        gen.Emit(OpCodes.Ldloca_S, cell)
+        gen.Emit(OpCodes.Initobj, surrogateType)
+
+    let argIsNull = gen.DefineLabel()
     if not recordType.IsValueType
     then
         gen.Emit(OpCodes.Ldarg_0)
-        gen.Emit(OpCodes.Brfalse, toEnd)
+        gen.Emit(OpCodes.Brfalse, argIsNull)
 
-    let cell = gen.DeclareLocal(surrogateType)
-    gen.Emit(OpCodes.Stloc, cell)
     for (recordField, surrogateField) in surrogateFields do
         gen.Emit((if surrogateType.IsValueType then OpCodes.Ldloca_S else OpCodes.Ldloc), cell)
         gen.Emit((if recordType.IsValueType then OpCodes.Ldarga_S else OpCodes.Ldarg), 0)
         gen.Emit(OpCodes.Call, recordField.GetMethod)
         gen.Emit(OpCodes.Stfld, surrogateField)
-    gen.Emit(OpCodes.Ldloc, cell)
 
-    gen.MarkLabel(toEnd)
+    gen.MarkLabel(argIsNull)
+    gen.Emit(OpCodes.Ldloc, cell)
     gen.Emit(OpCodes.Ret)
 
     surrogateType.CreateTypeInfo ()
