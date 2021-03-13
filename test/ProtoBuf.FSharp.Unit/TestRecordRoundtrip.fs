@@ -71,6 +71,19 @@ type NestedRecordWithZeroValues = {
     Name: string
 }
 
+[<Struct; TestName("Struct record with primitive collections")>]
+type StructRecordWithCollectionTestCases = {
+    TextCollection: string array
+    Data: int array
+    Name: string
+}
+
+[<Struct; TestName("Struct record with inner complex types")>]
+type StructRecordWithNestedTypes = {
+    DataCollection: InnerNestedRecordWithCollections array
+    Data: InnerNestedRecordWithCollections
+}
+
 module TestRecordRoundtrip = 
 
     // F# does not allow nulls although FsCheck tries to stress C# interoperability.
@@ -129,5 +142,7 @@ module TestRecordRoundtrip =
               yield buildTest<TestRecordSix>
               yield buildTest<TestRecordSeven>
               yield buildTest<NestedRecordWithZeroValues>
+              yield buildTest<StructRecordWithCollectionTestCases> // TODO: Fix struct record logic
+              yield buildTest<StructRecordWithNestedTypes> // TODO: Fix struct record logic
               yield! manualTestCases
             ]

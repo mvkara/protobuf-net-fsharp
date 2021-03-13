@@ -7,7 +7,6 @@ open System.Reflection
 open System.Reflection.Emit
 open MethodHelpers
 
-
 let inline emitZeroValueOntoEvaluationStack (gen: ILGenerator) (getterType: MethodType) = 
     match getterType with
     | MethodType.MethodInfo mi  ->
