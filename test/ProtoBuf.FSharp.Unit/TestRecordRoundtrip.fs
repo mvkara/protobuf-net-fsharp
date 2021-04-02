@@ -84,7 +84,7 @@ type StructRecordWithNestedTypes = {
     Data: InnerNestedRecordWithCollections
 }
 
-[<Struct; TestName("Struct record with struct collection type", [| typeof<StructRecordWithCollectionTestCases> |])>]
+[<Struct; TestName("Struct record with struct collection type", [| typeof<StructRecordWithCollectionTestCases>; typeof<InnerNestedRecordWithCollections> |])>]
 type StructRecordWithNestedStructCollectionTypes = {
     StructDataCollection: StructRecordWithCollectionTestCases array
     Data: InnerNestedRecordWithCollections
