@@ -7,6 +7,7 @@ open ProtoBuf.FSharp
 open ProtoBuf.Meta
 open Expecto.Expect
 open System.Collections.Generic
+open System
 
 [<TestName("Standard record with a simple C# list")>]
 type TestRecordOne = 
@@ -29,13 +30,65 @@ type TestRecordFour = {
     String : string
 }
 
-// Struct records are not supported due to limitation of protobuf-net.
-// See https://github.com/protobuf-net/protobuf-net/blob/3.0.62/src/protobuf-net/Meta/RuntimeTypeModel.cs#L1971 (currrent at time of code commit)
-// [<Struct; TestName("Struct Record">]
-// type TestRecordFive = {
-//     Flag : bool
-//     String : string
-// }
+
+[<Struct; TestName("Struct Record")>]
+type TestRecordFive = {
+    Flag : bool
+    String : string
+}
+
+type TestEnum =
+    | OptionA = 1uy
+    | OptionB = 2uy
+    | OptionC = 69uy
+
+[<TestName("Internal Record")>]
+type TestRecordSix = internal {
+    Field : struct (int * bool * int64)
+    Number : int64
+    DecimalNumber : decimal
+    EnumField : TestEnum
+    String : string
+    Date : System.DateTime
+}
+
+[<Struct; TestName("Struct Record with weird field names")>]
+type TestRecordSeven = {
+    ``__$uperF!eld__`` : bool
+    ``String#`` : string
+}
+
+type InnerNestedRecordWithCollections = {
+    ArrayData: int array
+    StringData: string
+}
+
+[<TestName("Struct nested record with arrays and strings", [| typeof<InnerNestedRecordWithCollections> |])>]
+type NestedRecordWithZeroValues = {
+    NestedCollectedData: InnerNestedRecordWithCollections array
+    NestedData: InnerNestedRecordWithCollections
+    Data: int array
+    Name: string
+}
+
+[<Struct; TestName("Struct record with primitive collections")>]
+type StructRecordWithCollectionTestCases = {
+    TextCollection: string array
+    Data: int array
+    Name: string
+}
+
+[<Struct; TestName("Struct record with inner complex types", [| typeof<InnerNestedRecordWithCollections> |])>]
+type StructRecordWithNestedTypes = {
+    DataCollection: InnerNestedRecordWithCollections array
+    Data: InnerNestedRecordWithCollections
+}
+
+[<Struct; TestName("Struct record with struct collection type", [| typeof<StructRecordWithCollectionTestCases>; typeof<InnerNestedRecordWithCollections> |])>]
+type StructRecordWithNestedStructCollectionTypes = {
+    StructDataCollection: StructRecordWithCollectionTestCases array
+    Data: InnerNestedRecordWithCollections
+}
 
 module TestRecordRoundtrip = 
 
@@ -50,13 +103,14 @@ module TestRecordRoundtrip =
             
         static member GenerateNonNullString() : Arbitrary<string> = Arb.Default.StringWithoutNullChars().Generator |> Gen.map (fun x -> x.Get) |> Gen.filter (box >> Operators.isNull >> not) |> Arb.fromGen
 
-    let roundtripSerialise (typeToTest: 't) = 
+    let roundtripSerialise (typeToTest: 't) (otherDependentRecordTypes: Type array) = 
         let model = 
             RuntimeTypeModel.Create()
             |> Serialiser.registerRecordIntoModel<'t>
-        let m = model.Add(typeof<TestRecordOne>, true)
-        m.UseConstructor <- false
-        model.CompileInPlace()
+
+        for dependentRecordType in otherDependentRecordTypes do
+            Serialiser.registerRuntimeTypeIntoModel dependentRecordType model |> ignore
+
         let cloned = model.DeepClone(typeToTest)
         equal (unbox cloned) typeToTest "Protobuf deep clone"
         use ms = new MemoryStream()
@@ -64,8 +118,8 @@ module TestRecordRoundtrip =
         ms.Seek(0L, SeekOrigin.Begin) |> ignore
         Serialiser.deserialise<'t> model ms
 
-    let testRoundtrip<'t when 't : equality> (typeToTest: 't)  = 
-        let rtData = roundtripSerialise typeToTest
+    let testRoundtrip<'t when 't : equality> otherDependentRecordTypes (typeToTest: 't)  = 
+        let rtData = roundtripSerialise typeToTest otherDependentRecordTypes
         equal rtData typeToTest "Type not equal"
     
     let config = { Config.QuickThrowOnFailure with Arbitrary = [ typeof<DataGenerator> ]; }
@@ -74,12 +128,12 @@ module TestRecordRoundtrip =
 
     let buildTest<'t when 't : equality> = 
         let testNameAttribute = typeof<'t>.GetCustomAttributes(typeof<TestNameAttribute>, true) |> Seq.head :?> TestNameAttribute
-        testCase testNameAttribute.Name <| fun () -> Check.One(config, testRoundtrip<'t>)
+        testCase testNameAttribute.Name <| fun () -> Check.One(config, testRoundtrip<'t> testNameAttribute.DependentTypeParamters)
 
     let manualTestCases = [
-        testCase "Can serialise empty array, string and option" <| fun () -> testRoundtrip { One = ""; Two = 1; Three = [||]; Four = None }
-        testCase "Can serialise option containing value" <| fun () -> testRoundtrip { One = ""; Two = 1; Three = [||]; Four = Some "TEST" }
-        testCase "Can serialise string, array and option containing value" <| fun () -> testRoundtrip { One = "TEST"; Two = 1; Three = [| "TEST1" |]; Four = Some "TEST" }
+        testCase "Can serialise empty array, string and option" <| fun () -> testRoundtrip [||] { One = ""; Two = 1; Three = [||]; Four = None } 
+        testCase "Can serialise option containing value" <| fun () -> testRoundtrip [||] { One = ""; Two = 1; Three = [||]; Four = Some "TEST" }
+        testCase "Can serialise string, array and option containing value" <| fun () -> testRoundtrip [||] { One = "TEST"; Two = 1; Three = [| "TEST1" |]; Four = Some "TEST" }
     ]
 
     [<Tests>]
@@ -90,6 +144,12 @@ module TestRecordRoundtrip =
               yield buildTest<TestRecordTwo>
               yield buildTest<TestRecordThree>
               yield buildTest<TestRecordFour>
-              //yield buildTest<TestRecordFive> // See comment on type for why this isn't supported currently.
+              yield buildTest<TestRecordFive>
+              yield buildTest<TestRecordSix>
+              yield buildTest<TestRecordSeven>
+              yield buildTest<NestedRecordWithZeroValues>
+              yield buildTest<StructRecordWithCollectionTestCases>
+              yield buildTest<StructRecordWithNestedTypes>
+              yield buildTest<StructRecordWithNestedStructCollectionTypes>
               yield! manualTestCases
             ]
