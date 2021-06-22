@@ -52,7 +52,7 @@ module Serialiser =
         match CodeGen.getTypeConstructionMethod typeToAdd fields with
         | CodeGen.TypeConstructionStrategy.ObjectSurrogate surrogateType ->
             let surrogateMetaType = model.Add(surrogateType, false)
-            surrogateMetaType.UseConstructor <- true
+            surrogateMetaType.UseConstructor <- not surrogateType.IsValueType
             let surrogateTypeFields = surrogateType.GetFields(BindingFlags.Public ||| BindingFlags.NonPublic ||| BindingFlags.Instance ||| BindingFlags.GetField)
             addFieldsToMetaType surrogateMetaType surrogateTypeFields
             metaType.SetSurrogate surrogateType
