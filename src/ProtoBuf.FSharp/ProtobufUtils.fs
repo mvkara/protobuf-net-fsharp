@@ -19,25 +19,22 @@ module Serialiser =
     /// By default if None is provided for the customTypeSuffix parameter for example with Option<string> the protobuf message will be an "OptionalString".
     /// If the model is already registered (explictly or implicitly via another registration) AND/OR the type passed in is not an option type this will no-op.
     let registerOptionTypesIntoModel (optionType: Type) customTypeSuffix (model: RuntimeTypeModel) =
+        if optionType.IsGenericType && optionType.GetGenericTypeDefinition() = typedefof<Option<_>> then
+            let definedTypes = seq {
+                for m in model.GetTypes() do
+                let m = m :?> MetaType
+                yield m.Type
+            }
 
-        let definedTypes = seq {
-            for m in model.GetTypes() do
-            let m = m :?> MetaType
-            yield m.Type
-        }
-
-        if
-            optionType.IsGenericType
-            && optionType.GetGenericTypeDefinition() = typedefof<Option<_>>
-            && definedTypes |> Seq.contains optionType |> not
-        then
-            let surrogateType = typedefof<Surrogates.Optional<_>>.MakeGenericType(optionType.GetGenericArguments())
-            let surrogateModelType = model.Add(surrogateType, false)
-            surrogateModelType.Name <- "Optional" + (customTypeSuffix |> Option.defaultValue (optionType.GetGenericArguments().[0].Name))
-            surrogateModelType.AddField(1, "HasValue") |> ignore
-            surrogateModelType.AddField(2, "Item") |> ignore
-            let mt = model.Add(optionType, false)
-            mt.SetSurrogate(surrogateType)
+            if  definedTypes |> Seq.contains optionType |> not
+            then
+                let surrogateType = typedefof<Surrogates.Optional<_>>.MakeGenericType(optionType.GetGenericArguments())
+                let surrogateModelType = model.Add(surrogateType, false)
+                surrogateModelType.Name <- "Optional" + (customTypeSuffix |> Option.defaultValue (optionType.GetGenericArguments().[0].Name))
+                surrogateModelType.AddField(1, "HasValue") |> ignore
+                surrogateModelType.AddField(2, "Item") |> ignore
+                let mt = model.Add(optionType, false)
+                mt.SetSurrogate(surrogateType)
 
     let private addFieldsToMetaType (metaType : MetaType) (fields : FieldInfo[]) =
         for (index, fieldInfo) in Seq.indexed fields do
@@ -51,10 +48,7 @@ module Serialiser =
         metaType.UseConstructor <- false
         match CodeGen.getTypeConstructionMethod typeToAdd fields with
         | CodeGen.TypeConstructionStrategy.ObjectSurrogate surrogateType ->
-            let surrogateMetaType = model.Add(surrogateType, false)
-            surrogateMetaType.UseConstructor <- not surrogateType.IsValueType
-            let surrogateTypeFields = surrogateType.GetFields(BindingFlags.Public ||| BindingFlags.NonPublic ||| BindingFlags.Instance ||| BindingFlags.GetField)
-            addFieldsToMetaType surrogateMetaType surrogateTypeFields
+            model.Add(surrogateType, true) |> ignore
             metaType.SetSurrogate surrogateType
         | CodeGen.TypeConstructionStrategy.CustomFactoryMethod factoryMethod ->
             addFieldsToMetaType metaType fields

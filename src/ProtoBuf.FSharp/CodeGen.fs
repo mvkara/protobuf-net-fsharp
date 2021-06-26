@@ -7,7 +7,24 @@ open System.Reflection
 open System.Reflection.Emit
 open MethodHelpers
 
-let inline emitZeroValueOntoEvaluationStack (gen: ILGenerator) (getterType: MethodType) =
+type private TypeBuilder with
+    member tb.DefineOpExplicit(src : Type, dst : Type) =
+        let attr = MethodAttributes.Public ||| MethodAttributes.HideBySig ||| MethodAttributes.SpecialName ||| MethodAttributes.Static
+        tb.DefineMethod("op_Explicit", attr, dst, [| src |])
+
+    member tb.SetProtoContractAttribute(skipConstructor : bool) =
+        let t = typeof<ProtoBuf.ProtoContractAttribute>
+        CustomAttributeBuilder(
+            t.GetConstructor [||], [||]
+            , [| t.GetProperty "ImplicitFields" ; t.GetProperty "SkipConstructor" |]
+            , [| box ProtoBuf.ImplicitFields.AllFields ; box skipConstructor |]
+        ) |> tb.SetCustomAttribute
+
+    member tb.DefineFieldForProtobuf(fi : PropertyInfo) =
+        tb.DefineField(fi.Name, fi.PropertyType, FieldAttributes.Public) // Do something with name and attributes?
+
+
+let private emitZeroValueOntoEvaluationStack (gen: ILGenerator) (getterType: MethodType) =
     match getterType with
     | MethodType.MethodInfo mi ->
         gen.EmitCall(OpCodes.Call, mi, null)
@@ -101,16 +118,15 @@ let surrogateTypeDeclaration (surrogateModule: ModuleBuilder) (targetType: Type)
 /// Emits a record surrogate. Intended to be used to support value type records ONLY since Protobuf-net at time of writing does not support custom ValueTypes/Structs.
 let private emitRecordSurrogate (surrogateModule: ModuleBuilder) (recordType: Type) (useValueTypeSurrogate: bool) =
     let struct (surrogateType, constructor) = surrogateTypeDeclaration surrogateModule recordType useValueTypeSurrogate
+    surrogateType.SetProtoContractAttribute(useValueTypeSurrogate)
 
     let surrogateFields = [|
         for fi in FSharpType.GetRecordFields(recordType, true) ->
-            struct (fi, surrogateType.DefineField(fi.Name, fi.PropertyType, FieldAttributes.Public))
+            struct (fi, surrogateType.DefineFieldForProtobuf fi)
     |]
 
-    let attr = MethodAttributes.Public ||| MethodAttributes.HideBySig ||| MethodAttributes.SpecialName ||| MethodAttributes.Static
-
-    // Define op_Implicit methods that Protobuf calls to create recordType from surrogate.
-    let conv = surrogateType.DefineMethod("op_Implicit", attr, recordType, [| surrogateType |])
+    // Define op_Explicit methods that Protobuf calls to create recordType from surrogate.
+    let conv = surrogateType.DefineOpExplicit(surrogateType, recordType)
     let gen = conv.GetILGenerator()
     for (recordField, surrogateField) in surrogateFields do
         gen.Emit((if surrogateType.IsValueType then OpCodes.Ldarga_S else OpCodes.Ldarg), 0)
@@ -119,8 +135,8 @@ let private emitRecordSurrogate (surrogateModule: ModuleBuilder) (recordType: Ty
     gen.Emit(OpCodes.Newobj, FSharpValue.PreComputeRecordConstructorInfo(recordType, true))
     gen.Emit(OpCodes.Ret)
 
-    // Define op_Implicit methods that Protobuf calls to create surrogate from recordType.
-    let conv = surrogateType.DefineMethod("op_Implicit", attr, surrogateType, [| recordType |])
+    // Define op_Explicit methods that Protobuf calls to create surrogate from recordType.
+    let conv = surrogateType.DefineOpExplicit(recordType, surrogateType)
     let gen = conv.GetILGenerator()
 
     let cell = gen.DeclareLocal(surrogateType)
@@ -152,12 +168,13 @@ let private emitRecordSurrogate (surrogateModule: ModuleBuilder) (recordType: Ty
 
 let private emitValueUnionSurrogate (surrogateModule: ModuleBuilder) (unionType: Type) (useValueTypeSurrogate: bool) =
     let struct (surrogateType, constructor) = surrogateTypeDeclaration surrogateModule unionType useValueTypeSurrogate
+    surrogateType.SetProtoContractAttribute(useValueTypeSurrogate)
 
     let cases = [|
         for caseInfo in FSharpType.GetUnionCases(unionType, true) ->
             struct (caseInfo, [|
                 for fi in caseInfo.GetFields() ->
-                    struct (fi, surrogateType.DefineField(fi.Name, fi.PropertyType, FieldAttributes.Public))
+                    struct (fi, surrogateType.DefineFieldForProtobuf fi)
             |])
     |]
 
@@ -168,11 +185,9 @@ let private emitValueUnionSurrogate (surrogateModule: ModuleBuilder) (unionType:
             | _ -> chooseName ("_" + name)
         surrogateType.DefineField(chooseName "__tag", typeof<int>, FieldAttributes.Public)
 
-    let attr = MethodAttributes.Public ||| MethodAttributes.HideBySig ||| MethodAttributes.SpecialName ||| MethodAttributes.Static
-
-    // Define op_Implicit methods that Protobuf calls to create unionType from surrogate.
+    // Define op_Explicit methods that Protobuf calls to create unionType from surrogate.
     begin
-        let conv = surrogateType.DefineMethod("op_Implicit", attr, unionType, [| surrogateType |])
+        let conv = surrogateType.DefineOpExplicit(surrogateType, unionType)
         let gen = conv.GetILGenerator()
 
         let jumpTable = Array.init (Array.length cases) (ignore >> gen.DefineLabel)
@@ -191,9 +206,9 @@ let private emitValueUnionSurrogate (surrogateModule: ModuleBuilder) (unionType:
             gen.Emit(OpCodes.Ret)
     end
 
-    // Define op_Implicit methods that Protobuf calls to create surrogate from unionType.
+    // Define op_Explicit methods that Protobuf calls to create surrogate from unionType.
     begin
-        let conv = surrogateType.DefineMethod("op_Implicit", attr, surrogateType, [| unionType |])
+        let conv = surrogateType.DefineOpExplicit(unionType, surrogateType)
         let gen = conv.GetILGenerator()
 
         let resultCell = gen.DeclareLocal(surrogateType)
