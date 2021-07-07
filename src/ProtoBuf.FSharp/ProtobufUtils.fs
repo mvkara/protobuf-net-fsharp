@@ -48,7 +48,6 @@ module Serialiser =
         metaType.UseConstructor <- false
         match CodeGen.getTypeConstructionMethod typeToAdd fields with
         | CodeGen.TypeConstructionStrategy.ObjectSurrogate surrogateType ->
-            model.Add(surrogateType, true) |> ignore
             metaType.SetSurrogate surrogateType
         | CodeGen.TypeConstructionStrategy.CustomFactoryMethod factoryMethod ->
             addFieldsToMetaType metaType fields
@@ -57,6 +56,14 @@ module Serialiser =
             addFieldsToMetaType metaType fields
 
         for field in fields do registerOptionTypesIntoModel field.FieldType None model
+
+    let registerUnionRuntimeTypeIntoModel' (unionType: Type) (model: RuntimeTypeModel) =
+        let metaType = model.Add(unionType, true)
+        let surrogateType = CodeGen.getUnionSurrogate unionType
+        metaType.SetSurrogate surrogateType
+        for subtype in CodeGen.relevantUnionSubtypes unionType do
+            model.Add(subtype, false).SetSurrogate(surrogateType)
+        model
 
     let registerUnionRuntimeTypeIntoModel (unionType: Type) (model: RuntimeTypeModel) =
         let unionCaseData = FSharpType.GetUnionCases(unionType, true)
