@@ -22,8 +22,7 @@ module internal ZeroValues =
             elif fieldType.IsGenericType && fieldType.GetGenericTypeDefinition() = typedefof<Map<_, _>> then
                 MethodHelpers.getFetchFunc <@ Map.empty @> fieldType.GenericTypeArguments |> Some
             elif fieldType.IsArray then
-                MethodHelpers.MethodType.NewArray fieldType |> Some
-                //MethodHelpers.getFetchFunc <@ getEmptyArray @> [| fieldType.GetElementType() |] |> Some
+                fieldType.GetElementType() |> MethodHelpers.MethodType.NewArray |> Some
             else None
 
         match zeroValueFieldSetters.TryGetValue(fieldType) with
