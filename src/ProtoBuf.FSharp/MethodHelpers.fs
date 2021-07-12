@@ -29,10 +29,12 @@ type MethodType =
     | MethodInfo of MethodInfo
     | PropertyInfo of PropertyInfo
     | FieldInfo of FieldInfo
-    | NewArray of Type
+    | NewArray of elementType : Type
 
 let getFetchFunc methodQuotation (typeParameters: Type array) =
     match methodQuotation with
+    | Call(_, mi, _) when Array.isEmpty typeParameters -> MethodType.MethodInfo mi
+    | Call(_, mi, _) -> mi.GetGenericMethodDefinition().MakeGenericMethod(typeParameters) |> MethodType.MethodInfo
     | Lambda(_, Call(_, mi, _))
     | Lambda(_, Lambda(_, Call(_, mi, _))) -> MethodType.MethodInfo (mi.MakeGenericMethod(typeParameters))
     | FieldGet(_, fi) -> MethodType.FieldInfo fi

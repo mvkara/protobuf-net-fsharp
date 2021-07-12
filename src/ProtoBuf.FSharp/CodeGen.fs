@@ -7,17 +7,17 @@ open System.Reflection
 open System.Reflection.Emit
 open MethodHelpers
 
-let inline emitZeroValueOntoEvaluationStack (gen: ILGenerator) (getterType: MethodType) = 
+let inline emitZeroValueOntoEvaluationStack (gen: ILGenerator) (getterType: MethodType) =
     match getterType with
-    | MethodType.MethodInfo mi  ->
-        gen.EmitCall(OpCodes.Call, mi, null) 
-    | MethodType.PropertyInfo pi -> 
-        gen.EmitCall(OpCodes.Call, pi.GetMethod, null) 
+    | MethodType.MethodInfo mi ->
+        gen.EmitCall(OpCodes.Call, mi, null)
+    | MethodType.PropertyInfo pi ->
+        gen.EmitCall(OpCodes.Call, pi.GetMethod, null)
     | MethodType.FieldInfo fi ->
         gen.Emit(OpCodes.Ldsfld, fi)
-    | MethodType.NewArray t -> 
+    | MethodType.NewArray elementType ->
         gen.Emit(OpCodes.Ldc_I4_0) // Push length onto the stack.
-        gen.Emit(OpCodes.Newarr, t) // Initialise array with length.
+        gen.Emit(OpCodes.Newarr, elementType) // Initialise array with length.
 
 let private emitFieldAssignments (gen: ILGenerator) (zeroValuesPerField: ZeroValues.FieldWithZeroValueSetMethod[]) =
     for zeroValueField in zeroValuesPerField do
