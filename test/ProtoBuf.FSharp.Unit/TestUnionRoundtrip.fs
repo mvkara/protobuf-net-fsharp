@@ -59,6 +59,12 @@ module ExampleTypesInsideModule =
     | CaseThreee of singleData: string
     | CaseFour
 
+    [<Struct; TestName("Value union with no data inside")>]
+    type ValueUnionNoData =
+    | CaseOne
+    | CaseTwo
+    | CaseThreee
+
 module TestUnionRoundtrip =
 
     let propertyToTest<'t when 't : equality> (typeToTest: 't) = 
@@ -74,8 +80,11 @@ module TestUnionRoundtrip =
     
     let buildTest<'t when 't : equality>() = 
         let config = { Config.QuickThrowOnFailure with Arbitrary = [ typeof<DataGenerator> ] }
-        let testNameAttribute = typeof<'t>.GetCustomAttributes(typeof<TestNameAttribute>, true) |> Seq.head :?> TestNameAttribute
-        testCase testNameAttribute.Name <| fun () -> Check.One(config, propertyToTest<'t>)
+        let name =
+            match typeof<'t>.GetCustomAttributes(typeof<TestNameAttribute>, true) with
+            | [| :? TestNameAttribute as attr |] -> attr.Name
+            | _ -> sprintf "Union case for %A" typeof<'t>
+        testCase name <| fun () -> Check.One(config, propertyToTest<'t>)
 
     // This test is just to show how the schema will be look like for other consumers. It is expected to fail so isn't used normally.
     let manualTest = 
@@ -103,4 +112,8 @@ module TestUnionRoundtrip =
               buildTest<ExampleTypesInsideModule.SerialisableOption<string>>() 
               buildTest<ExampleTypesInsideModule.Wrapper<string>>()
               buildTest<ExampleTypesInsideModule.UnionNine>()
+              buildTest<ValueOption<string>>()
+              buildTest<Result<int, bool>>()
+              buildTest<Result<string, int[]>>()
+              buildTest<ExampleTypesInsideModule.ValueUnionNoData>()
               ]

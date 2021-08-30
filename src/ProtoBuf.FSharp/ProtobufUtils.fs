@@ -8,6 +8,13 @@ open System.Reflection
 open System.IO
 
 module Serialiser =
+    let private registerSurrogate (tp : Type) (model : RuntimeTypeModel) =
+        let surrogateType = CodeGen.getSurrogate tp
+        match surrogateType.GetMethod("RegisterIntoModel") with
+        | null -> ()
+        | method -> method.Invoke(null, [| box model |]) |> ignore
+        model.Add(tp, false).SetSurrogate surrogateType
+        surrogateType
 
     /// The magic number where if a union type has more than the above cases it simply is a tagged instance of the parent type.
     /// Otherwise for this number and below even non-empty unions get their own inner class prefixed with "_".
@@ -19,58 +26,38 @@ module Serialiser =
     /// By default if None is provided for the customTypeSuffix parameter for example with Option<string> the protobuf message will be an "OptionalString".
     /// If the model is already registered (explictly or implicitly via another registration) AND/OR the type passed in is not an option type this will no-op.
     let registerOptionTypesIntoModel (optionType: Type) customTypeSuffix (model: RuntimeTypeModel) =
+        if optionType.IsGenericType && optionType.GetGenericTypeDefinition() = typedefof<Option<_>> then
+            let definedTypes = seq {
+                for m in model.GetTypes() do
+                let m = m :?> MetaType
+                yield m.Type
+            }
+            if definedTypes |> Seq.contains optionType |> not
+            then
+                registerSurrogate optionType model |> ignore
 
-        let definedTypes = seq {
-            for m in model.GetTypes() do
-            let m = m :?> MetaType
-            yield m.Type
-        }
+    let private processFieldsAndCreateFieldSetters (typeToAdd: Type) (model : RuntimeTypeModel) =
+        let metaType = model.Add(typeToAdd, false)
+        metaType.UseConstructor <- false
 
-        if
-            optionType.IsGenericType
-            && optionType.GetGenericTypeDefinition() = typedefof<Option<_>>
-            && definedTypes |> Seq.contains optionType |> not
-        then
-            let surrogateType = typedefof<Surrogates.Optional<_>>.MakeGenericType(optionType.GetGenericArguments())
-            let surrogateModelType = model.Add(surrogateType, false)
-            surrogateModelType.Name <- "Optional" + (customTypeSuffix |> Option.defaultValue (optionType.GetGenericArguments().[0].Name))
-            surrogateModelType.AddField(1, "HasValue") |> ignore
-            surrogateModelType.AddField(2, "Item") |> ignore
-            let mt = model.Add(optionType, false)
-            mt.SetSurrogate(surrogateType)
-
-    let private addFieldsToMetaType (metaType : MetaType) (fields : FieldInfo[]) =
+        let fields = typeToAdd.GetFields(BindingFlags.Public ||| BindingFlags.NonPublic ||| BindingFlags.Instance ||| BindingFlags.GetField)
         for (index, fieldInfo) in Seq.indexed fields do
             let fieldModel = metaType.AddField(1 + index, fieldInfo.Name)
             fieldModel.BackingMember <- fieldInfo
             fieldModel.OverwriteList <- true
             fieldModel.Name <- fieldInfo.Name.TrimStart('_').TrimEnd('@') // Still not perfect --- F# allows pretty wild names (some cause protobuf to fail)
 
-    let private processFieldsAndCreateFieldSetters (typeToAdd: Type) (metaType: MetaType) (model : RuntimeTypeModel) =
-        let fields = typeToAdd.GetFields(BindingFlags.Public ||| BindingFlags.NonPublic ||| BindingFlags.Instance ||| BindingFlags.GetField)
-        metaType.UseConstructor <- false
-        match CodeGen.getTypeConstructionMethod typeToAdd fields with
-        | CodeGen.TypeConstructionStrategy.ObjectSurrogate surrogateType ->
-            let surrogateMetaType = model.Add(surrogateType, false)
-            surrogateMetaType.UseConstructor <- true
-            let surrogateTypeFields = surrogateType.GetFields(BindingFlags.Public ||| BindingFlags.NonPublic ||| BindingFlags.Instance ||| BindingFlags.GetField)
-            addFieldsToMetaType surrogateMetaType surrogateTypeFields
-            metaType.SetSurrogate surrogateType
-        | CodeGen.TypeConstructionStrategy.CustomFactoryMethod factoryMethod ->
-            addFieldsToMetaType metaType fields
-            metaType.SetFactory factoryMethod |> ignore
-        | CodeGen.TypeConstructionStrategy.NoCustomConstructor ->
-            addFieldsToMetaType metaType fields
+        let zeroValuesForFields = ZeroValues.calculateApplicableFields fields
+        if Array.length zeroValuesForFields > 0 then
+            metaType.SetFactory(CodeGen.getFactory typeToAdd zeroValuesForFields) |> ignore
 
-        for field in fields do registerOptionTypesIntoModel field.FieldType None model
+        metaType
 
-    let registerUnionRuntimeTypeIntoModel (unionType: Type) (model: RuntimeTypeModel) =
+    let private registerUnionDirectly (unionType: Type) (model: RuntimeTypeModel) =
         let unionCaseData = FSharpType.GetUnionCases(unionType, true)
 
         // Register the supertype in all cases
-        let mt = model.Add(unionType, true)
-        mt.UseConstructor <- false
-        processFieldsAndCreateFieldSetters unionType mt model |> ignore
+        let mt = processFieldsAndCreateFieldSetters unionType model
 
         // If there are no fields in any properties then we can assume the F# compiler has compiled
         // the class in a non-flat fashion. Structs are still compiled in a flat way (F# 4.1+ struct DU's).
@@ -108,35 +95,69 @@ module Serialiser =
                     // The union may be a supertype union with no values hence no subtype. Should use the supertype as appropriate and skip this case.
                     match typeToAddOpt with
                     | Some(typeToAdd) ->
-                        let caseTypeModel = model.Add(typeToAdd, false)
+                        let caseTypeModel = processFieldsAndCreateFieldSetters typeToAdd model
+                        caseTypeModel.Name <- ucd.Name
                         let tag = 1000 + ucd.Tag
                         mt.AddSubType(tag, typeToAdd) |> ignore
-                        caseTypeModel.UseConstructor <- false
-                        caseTypeModel.Name <- ucd.Name
-                        processFieldsAndCreateFieldSetters typeToAdd caseTypeModel model |> ignore
                     | None -> ()
-        model
 
-    let registerUnionIntoModel<'tunion> model = registerUnionRuntimeTypeIntoModel typeof<'tunion> model
+    let private internalRegister useSurrogateForReferenceUnions (runtimeType: Type) (model: RuntimeTypeModel) =
+        match runtimeType with
+        | recordType when FSharpType.IsRecord(recordType, true) ->
+            let fields = FSharpType.GetRecordFields(recordType, true)
+            if recordType.IsValueType && fields |> Array.exists (fun pi -> ZeroValues.isApplicableTo pi.PropertyType) then
+                registerSurrogate recordType model |> ignore
+            else
+                processFieldsAndCreateFieldSetters recordType model |> ignore
 
-    let registerRecordRuntimeTypeIntoModel (runtimeType: Type) (model: RuntimeTypeModel) =
-        let metaType = model.Add(runtimeType, false)
-        metaType.UseConstructor <- false
-        processFieldsAndCreateFieldSetters runtimeType metaType model |> ignore
-        model
+            for field in fields do
+                registerOptionTypesIntoModel field.PropertyType None model
 
-    let registerRecordIntoModel<'t> (model: RuntimeTypeModel) = registerRecordRuntimeTypeIntoModel typeof<'t> model
+        | unionType when FSharpType.IsUnion(unionType, true) ->
+            if unionType.IsGenericType && unionType.GetGenericTypeDefinition() = typedefof<Option<_>> then
+                registerOptionTypesIntoModel unionType None model
+            elif unionType.IsValueType || useSurrogateForReferenceUnions then
+                let surrogateType = registerSurrogate unionType model
+                for subtype in CodeGen.relevantUnionSubtypes unionType do
+                    model.Add(subtype, false).SetSurrogate(surrogateType)
+            else
+                registerUnionDirectly unionType model
+
+            for caseInfo in FSharpType.GetUnionCases(unionType, true) do
+                for field in caseInfo.GetFields() do
+                    registerOptionTypesIntoModel field.PropertyType None model
+
+        | _ ->
+            model.Add(runtimeType, true) |> ignore
+
 
     let registerRuntimeTypeIntoModel (runtimeType: Type) (model: RuntimeTypeModel) =
-        if FSharpType.IsRecord (runtimeType, true)
-        then registerRecordRuntimeTypeIntoModel runtimeType model
-        elif FSharpType.IsUnion (runtimeType, true)
-        then registerUnionRuntimeTypeIntoModel runtimeType model
-        else
-            model.Add(runtimeType, true) |> ignore
-            model
+        internalRegister false runtimeType model
+        model
 
-    let registerTypeIntoModel<'t> (model: RuntimeTypeModel) = registerRuntimeTypeIntoModel typeof<'t> model
+    let registerTypeIntoModel<'t> (model: RuntimeTypeModel) =
+        registerRuntimeTypeIntoModel typeof<'t> model
+
+
+    let registerUnionRuntimeTypeIntoModel (unionType: Type) (model: RuntimeTypeModel) =
+        if FSharpType.IsUnion(unionType, true) then
+            registerRuntimeTypeIntoModel unionType model
+        else
+            failwithf "registerUnionRuntimeTypeIntoModel: %A is not a union" unionType
+
+    let registerUnionIntoModel<'tunion> model =
+        registerUnionRuntimeTypeIntoModel typeof<'tunion> model
+
+
+    let registerRecordRuntimeTypeIntoModel (recordType: Type) (model: RuntimeTypeModel) =
+        if FSharpType.IsRecord(recordType, true) then
+            registerRuntimeTypeIntoModel recordType model
+        else
+            failwithf "registerRecordRuntimeTypeIntoModel: %A is not a record" recordType
+
+    let registerRecordIntoModel<'t> (model: RuntimeTypeModel) =
+        registerRecordRuntimeTypeIntoModel typeof<'t> model
+
 
     let serialise (model: RuntimeTypeModel) (stream: Stream) (o: 't) = model.Serialize(stream, o)
 
