@@ -6,11 +6,11 @@
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="CollectionRegistration.fs" />
     <Compile Include="MethodHelpers.fs" />
     <Compile Include="ZeroValues.fs" />
     <Compile Include="Surrogates.fs" />
     <Compile Include="CodeGen.fs" />
+    <Compile Include="CollectionRegistration.fs" />
     <Compile Include="ProtobufUtils.fs" />
     <Content Include="app.config" />
   </ItemGroup>

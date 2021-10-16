@@ -38,11 +38,12 @@ module Serialiser =
 
     let private attemptToRegisterFieldType (fieldType: Type) (model: RuntimeTypeModel) =
         if fieldType.IsGenericType then
-            let def = fieldType.GetGenericTypeDefinition()
-            if def = typedefof<_ option> then
+            match fieldType.GetGenericTypeDefinition() with
+            | td when td = typedefof<_ option> ->
                 registerOptionTypesIntoModel fieldType None model
-            elif def = typedefof<_ list> then
-                CollectionRegistration.registerCollectionWithReflectedTypeIntoModel model fieldType |> ignore
+            | td when CollectionRegistration.collectionTypes.Contains td ->
+                CollectionRegistration.registerCollectionWithReflectedTypeIntoModel model fieldType
+            | _ -> ()
 
     let private processFieldsAndCreateFieldSetters (typeToAdd: Type) (model : RuntimeTypeModel) =
         let metaType = model.Add(typeToAdd, false)

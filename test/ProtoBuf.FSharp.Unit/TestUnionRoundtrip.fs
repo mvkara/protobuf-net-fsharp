@@ -71,7 +71,7 @@ module ExampleTypesInsideModule =
 module TestUnionRoundtrip =
 
     let propertyToTest<'t when 't : equality> (typeToTest: 't) = 
-        let model = RuntimeTypeModel.Create() |> Serialiser.registerUnionIntoModel<'t>
+        let model = RuntimeTypeModel.Create () |> Serialiser.registerUnionIntoModel<'t>
         model.CompileInPlace()
         let cloned = model.DeepClone(typeToTest)
         equal (unbox cloned) (typeToTest) "Protobuf deep clone"

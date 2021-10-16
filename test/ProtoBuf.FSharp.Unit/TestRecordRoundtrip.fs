@@ -119,7 +119,7 @@ module TestRecordRoundtrip =
 
     let roundtripSerialise (typeToTest: 't) (otherDependentRecordTypes: Type array) = 
         let model = 
-            RuntimeTypeModel.Create()
+            RuntimeTypeModel.Create ()
             |> Serialiser.registerRecordIntoModel<'t>
 
         for dependentRecordType in otherDependentRecordTypes do
@@ -170,5 +170,8 @@ module TestRecordRoundtrip =
               yield buildTest<StructWith2GenericArs<string, string[]>>
               yield buildTest<StructWith2GenericArs<int, string[] option>>
               yield buildTest<TestRecordOneWithList>
+              yield buildTest<StructWith2GenericArs<int, string list>>
+              yield buildTest<StructWith2GenericArs<int, Set<string>>>
+              yield buildTest<StructWith2GenericArs<int, Map<string, string>>>
               yield! manualTestCases
             ]
