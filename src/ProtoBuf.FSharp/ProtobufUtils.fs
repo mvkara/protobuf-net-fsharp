@@ -192,8 +192,10 @@ module Serialiser =
        model
 
 
-    let serialise (model: RuntimeTypeModel) (stream: Stream) (o: 't) = model.Serialize(stream, o)
+    let serialise<'t> (model: RuntimeTypeModel) (stream: Stream) (o: 't) =
+        model.Serialize<'t>(stream, o) |> ignore
 
-    let deserialise<'t> (model: RuntimeTypeModel) (stream: Stream) = model.Deserialize(stream, null, typeof<'t>) :?> 't
+    let deserialise<'t> (model: RuntimeTypeModel) (stream: Stream) : 't =
+        model.Deserialize<'t>(stream)
 
     let defaultModel = RuntimeTypeModel.Default
