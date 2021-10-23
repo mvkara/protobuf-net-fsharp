@@ -71,7 +71,7 @@ module ExampleTypesInsideModule =
 module TestUnionRoundtrip =
 
     let propertyToTest<'t when 't : equality> (typeToTest: 't) = 
-        let model = RuntimeTypeModel.Create () |> Serialiser.registerUnionIntoModel<'t>
+        let model = RuntimeTypeModel.Create("") |> Serialiser.registerUnionIntoModel<'t>
         model.CompileInPlace()
         let cloned = model.DeepClone(typeToTest)
         equal (unbox cloned) (typeToTest) "Protobuf deep clone"
@@ -94,7 +94,7 @@ module TestUnionRoundtrip =
         testCase 
             "Generate schema" 
             (fun () ->  
-                let model = RuntimeTypeModel.Create() |> Serialiser.registerUnionIntoModel<ExampleTypesInsideModule.UnionNine>
+                let model = RuntimeTypeModel.Create("") |> Serialiser.registerUnionIntoModel<ExampleTypesInsideModule.UnionNine>
                 model.CompileInPlace()
                 let schema = model.GetSchema(typeof<ExampleTypesInsideModule.UnionNine>)
                 equal schema "" "Schema generated")

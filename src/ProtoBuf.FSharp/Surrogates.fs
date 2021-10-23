@@ -31,10 +31,10 @@ type ListSurrogate<'t> =
     val mutable List : 't[]
 
     static member op_Explicit (list: 't list) =
-        match box list with
-        | null -> ListSurrogate(List = [| |])
-        | _ when List.isEmpty list -> ListSurrogate(List = [| |])
-        | _ -> ListSurrogate(List = List.toArray(list))
+        if obj.ReferenceEquals(list, null) || List.isEmpty list then
+            ListSurrogate(List = [| |])
+        else
+            ListSurrogate(List = List.toArray(list))
 
     static member op_Explicit (sur: 't ListSurrogate) =
         match sur.List with
@@ -48,10 +48,10 @@ type SetSurrogate<'t when 't : comparison> =
     val mutable List : 't[]
 
     static member op_Explicit (set: Set<'t>) =
-        match box set with
-        | null -> SetSurrogate(List = [| |])
-        | _ when Set.isEmpty set -> SetSurrogate(List = [| |])
-        | _ -> SetSurrogate(List = Set.toArray(set))
+        if obj.ReferenceEquals(set, null) || Set.isEmpty set then
+            SetSurrogate(List = [| |])
+        else
+            SetSurrogate(List = Set.toArray(set))
 
     static member op_Explicit (sur: SetSurrogate<'t>) =
         match sur.List with
@@ -65,10 +65,10 @@ type MapSurrogate<'k, 'v when 'k : comparison> =
     val mutable List : KeyValuePair<'k, 'v>[]
 
     static member op_Explicit (map: Map<'k, 'v>) =
-        match box map with
-        | null -> MapSurrogate(List = [| |])
-        | _ when Map.isEmpty map -> MapSurrogate(List = [| |])
-        | _ -> MapSurrogate(List = [| for kv in map -> kv |])
+        if obj.ReferenceEquals(map, null) || Map.isEmpty map then
+            MapSurrogate(List = [| |])
+        else
+            MapSurrogate(List = [| for kv in map -> kv |])
 
     static member op_Explicit (sur: MapSurrogate<'k, 'v>) =
         match sur.List with
@@ -81,22 +81,3 @@ type MapSurrogate<'k, 'v when 'k : comparison> =
             seq { for KeyValue(k, v) in list -> (k, fixZeroValue v) } |> Map.ofSeq
         | list ->
             seq { for KeyValue(k, v) in list -> (k, v) } |> Map.ofSeq
-
-[<ProtoContract>]
-type ArraySurrogate<'t>() =
-    [<ProtoMember(1)>]
-    member val public List = Array.empty<'t> with get, set
-
-    static member public To (l: 't array) =
-        match l with
-        | null -> ArraySurrogate(List = Array.empty<'t>)
-        | _ when Array.isEmpty l -> ArraySurrogate(List = Array.empty<'t>)
-        | _ -> ArraySurrogate(List = (l |> Seq.toArray))
-
-    static member public From (l: 't ArraySurrogate) =
-        match l.List with
-        | null -> [||]
-        | _ -> l.List
-
-    static member public op_Implicit (l: 't array) : ArraySurrogate<'t> = ArraySurrogate<'t>.To(l)
-    static member public op_Implicit (l: 't ArraySurrogate) : 't array = ArraySurrogate<'t>.From(l)
