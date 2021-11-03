@@ -109,8 +109,6 @@ vs the default protobuf-net behaviour at time of writing
 
 ## Collection Support ##
 
-**NOTE: This requires a PR to the protobuf-net library to enable custom surrogates. Until this is approved this feature branch is a POC only (https://github.com/mgravell/protobuf-net/pull/336)**
-
 When using Protobuf-net with F# there are some issues when using collections:
 
 - By default only the standard .NET collections are supported. F# collections (not being OO based) don't work by default.
@@ -125,6 +123,8 @@ This library adds supports for both by adding surrogate types to the model as re
   - All arrays that are empty are deserialised as empty arrays rather than Nulls. In other words an array will never be deserialised as a Null.
 - Lists (FSharpList<_>)
   - Full roundtrip serialisation support. Any nulls from serialisation will be treated as an empty list as expected.
+- Sets (FSharpSet<_>)
+- Sets (FSharpMap<_, _>)
 
 If you need to serialise a collection by itself (not in a record/DU) or as part of a standard POJO simply
 use the CollectionRegistration.registerCollectionWithReflectedTypeIntoModel function.
