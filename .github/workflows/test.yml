@@ -1,0 +1,44 @@
+﻿name: test
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - dotnet-version: '3.1.x'
+            dotnet-tfm: 'netcoreapp3.1'
+
+          - dotnet-version: '5.0.x'
+            dotnet-tfm: 'net5.0'
+
+          - dotnet-version: '6.0.x'
+            dotnet-tfm: 'net6.0'
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Setup .NET ${{ matrix.dotnet-version }}
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: ${{ matrix.dotnet-version }}
+
+    - name: Print .NET version
+      run: dotnet --version
+
+    - name: Substitute TargetFramework into test project
+      working-directory: ./test/ProtoBuf.FSharp.Unit
+      run: sed -i 's/<TargetFramework>.*<\/TargetFramework>/<TargetFramework>${{ matrix.dotnet-tfm }}<\/TargetFramework>/g' ProtoBuf.FSharp.Unit.fsproj
+
+    - name: Paket
+      run: dotnet tool restore
+
+    - name: Build
+      run: dotnet build
+
+    - name: Run tests
+      working-directory: ./test/ProtoBuf.FSharp.Unit
+      run: dotnet run --framework ${{ matrix.dotnet-tfm }}
