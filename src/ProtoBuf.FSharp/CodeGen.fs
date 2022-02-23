@@ -61,6 +61,7 @@ let private emitStackTopZeroCheck (gen : ILGenerator) (topType : Type) =
     if topType.IsGenericParameter then
         let skipZeroCheck = gen.DefineLabel()
         gen.Emit(OpCodes.Ldtoken, topType) // in runtime that loads whatever type topType is substituted with
+        gen.Emit(OpCodes.Call, MethodHelpers.getMethodInfo <@ Type.GetTypeFromHandle @> [| |])
         gen.Emit(OpCodes.Call, MethodHelpers.getMethodInfo <@ ZeroValues.isApplicableTo @> [| |])
         gen.Emit(OpCodes.Brfalse, skipZeroCheck)
         gen.Emit(OpCodes.Dup)
@@ -117,6 +118,7 @@ let private emitFactory (resultType : Type) (zeroValuesPerField: ZeroValues.Fiel
         emitRecordDefault gen resultType
     | null -> // Is a type that isn't a record with no parameterless constructor. NOTE: This is significantly slower for deserialisation than alternative pathways.
         gen.Emit(OpCodes.Ldtoken, resultType)
+        gen.Emit(OpCodes.Call, MethodHelpers.getMethodInfo <@ Type.GetTypeFromHandle @> [| |])
         gen.EmitCall(OpCodes.Call, MethodHelpers.getMethodInfo <@ Runtime.Serialization.FormatterServices.GetUninitializedObject @> [||], null)
         emitFieldAssignments gen zeroValuesPerField
     | ctr -> // Has a parameterless constructor
