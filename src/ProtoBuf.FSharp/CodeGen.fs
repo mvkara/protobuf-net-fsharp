@@ -514,7 +514,10 @@ let private surrogateAssembly = AssemblyBuilder.DefineDynamicAssembly(AssemblyNa
 let private surrogateModule = surrogateAssembly.DefineDynamicModule "SurrogateModule"
 let private surrogateCache =
     ConcurrentDictionary<Type, Lazy<Type>> (seq {
-        KeyValuePair(typedefof<Option<_>>, lazy typedefof<Surrogates.Optional<_>>)
+        KeyValuePair(typedefof<_ option>, lazy typedefof<Surrogates.Optional<_>>)
+        KeyValuePair(typedefof<_ list>, lazy typedefof<Surrogates.ListSurrogate<_>>)
+        KeyValuePair(typedefof<Set<_>>, lazy typedefof<Surrogates.SetSurrogate<_>>)
+        KeyValuePair(typedefof<Map<_, _>>, lazy typedefof<Surrogates.MapSurrogate<_, _>>)
     })
 
 let private makeSurrogate (typeToAdd : Type) =

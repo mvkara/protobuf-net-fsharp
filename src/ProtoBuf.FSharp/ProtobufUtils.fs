@@ -4,8 +4,9 @@ open ProtoBuf
 open ProtoBuf.Meta
 open FSharp.Reflection
 open System
-open System.Reflection
+open System.Collections.Generic
 open System.IO
+open System.Reflection
 
 module Serialiser =
     let private registerSurrogate (tp : Type) (model : RuntimeTypeModel) =
@@ -16,25 +17,27 @@ module Serialiser =
         model.Add(tp, false).SetSurrogate surrogateType
         surrogateType
 
-    /// The magic number where if a union type has more than the above cases it simply is a tagged instance of the parent type.
-    /// Otherwise for this number and below even non-empty unions get their own inner class prefixed with "_".
-    let [<Literal>] private CasesCountWhereNoFieldCasesGenerateType = 3
 
-    /// Allows users to register option types in advance. You can specify a custom suffix name for the Protobuf wrapper type generated.
-    /// This only needs to be called directly if your type either is not already a field in another type previously registered (e.g. a record or union)
-    /// and/or your not happy with the default type name in case of naming clashes.
-    /// By default if None is provided for the customTypeSuffix parameter for example with Option<string> the protobuf message will be an "OptionalString".
-    /// If the model is already registered (explictly or implicitly via another registration) AND/OR the type passed in is not an option type this will no-op.
-    let registerOptionTypesIntoModel (optionType: Type) customTypeSuffix (model: RuntimeTypeModel) =
-        if optionType.IsGenericType && optionType.GetGenericTypeDefinition() = typedefof<Option<_>> then
-            let definedTypes = seq {
-                for m in model.GetTypes() do
-                let m = m :?> MetaType
-                yield m.Type
-            }
-            if definedTypes |> Seq.contains optionType |> not
-            then
-                registerSurrogate optionType model |> ignore
+    let internal collectionTypes =
+        HashSet (seq { typedefof<_ list>; typedefof<Set<_>>; typedefof<Map<_, _>> })
+
+    let private internalRegisterCollection (listType: Type) (model: RuntimeTypeModel) =
+        if model.IsDefined(listType) |> not then
+            let t = model.Add(listType, false)
+            t.IgnoreListHandling <- true
+            CodeGen.getSurrogate listType |> t.SetSurrogate
+
+
+    let private internalRegisterOption (optionType: Type) (model: RuntimeTypeModel) =
+        let definedTypes = seq {
+            for m in model.GetTypes() do
+            let m = m :?> MetaType
+            yield m.Type
+        }
+        if definedTypes |> Seq.contains optionType |> not
+        then
+            registerSurrogate optionType model |> ignore
+
 
     let private processFieldsAndCreateFieldSetters (typeToAdd: Type) (model : RuntimeTypeModel) =
         let metaType = model.Add(typeToAdd, false)
@@ -52,6 +55,10 @@ module Serialiser =
             metaType.SetFactory(CodeGen.getFactory typeToAdd zeroValuesForFields) |> ignore
 
         metaType
+
+    /// The magic number where if a union type has more than the above cases it simply is a tagged instance of the parent type.
+    /// Otherwise for this number and below even non-empty unions get their own inner class prefixed with "_".
+    let [<Literal>] private CasesCountWhereNoFieldCasesGenerateType = 3
 
     let private registerUnionDirectly (unionType: Type) (model: RuntimeTypeModel) =
         let unionCaseData = FSharpType.GetUnionCases(unionType, true)
@@ -101,8 +108,19 @@ module Serialiser =
                         mt.AddSubType(tag, typeToAdd) |> ignore
                     | None -> ()
 
+
+    let private attemptToRegisterFieldType (fieldType: Type) (model: RuntimeTypeModel) =
+        if fieldType.IsGenericType then
+            match fieldType.GetGenericTypeDefinition() with
+            | t when t = typedefof<_ option> -> internalRegisterOption fieldType model
+            | t when collectionTypes.Contains t -> internalRegisterCollection fieldType model
+            | _ -> ()
+
     let private internalRegister useSurrogateForReferenceUnions (runtimeType: Type) (model: RuntimeTypeModel) =
         match runtimeType with
+        | listType when listType.IsGenericType && collectionTypes.Contains(listType.GetGenericTypeDefinition()) -> // 't list is union, so this should precede union handling
+            internalRegisterCollection listType model
+
         | recordType when FSharpType.IsRecord(recordType, true) ->
             let fields = FSharpType.GetRecordFields(recordType, true)
             if recordType.IsValueType && fields |> Array.exists (fun pi -> ZeroValues.isApplicableTo pi.PropertyType) then
@@ -111,11 +129,11 @@ module Serialiser =
                 processFieldsAndCreateFieldSetters recordType model |> ignore
 
             for field in fields do
-                registerOptionTypesIntoModel field.PropertyType None model
+                attemptToRegisterFieldType field.PropertyType model
 
         | unionType when FSharpType.IsUnion(unionType, true) ->
-            if unionType.IsGenericType && unionType.GetGenericTypeDefinition() = typedefof<Option<_>> then
-                registerOptionTypesIntoModel unionType None model
+            if unionType.IsGenericType && unionType.GetGenericTypeDefinition() = typedefof<Option<_>> then // 't option is union too
+                internalRegisterOption unionType model
             elif unionType.IsValueType || useSurrogateForReferenceUnions then
                 let surrogateType = registerSurrogate unionType model
                 for subtype in CodeGen.relevantUnionSubtypes unionType do
@@ -125,7 +143,7 @@ module Serialiser =
 
             for caseInfo in FSharpType.GetUnionCases(unionType, true) do
                 for field in caseInfo.GetFields() do
-                    registerOptionTypesIntoModel field.PropertyType None model
+                    attemptToRegisterFieldType field.PropertyType model
 
         | _ ->
             model.Add(runtimeType, true) |> ignore
@@ -159,8 +177,25 @@ module Serialiser =
         registerRecordRuntimeTypeIntoModel typeof<'t> model
 
 
-    let serialise (model: RuntimeTypeModel) (stream: Stream) (o: 't) = model.Serialize(stream, o)
+    /// Allows users to register option types in advance. You can specify a custom suffix name for the Protobuf wrapper type generated.
+    /// This only needs to be called directly if your type either is not already a field in another type previously registered (e.g. a record or union)
+    /// and/or your not happy with the default type name in case of naming clashes.
+    /// By default if None is provided for the customTypeSuffix parameter for example with Option<string> the protobuf message will be an "OptionalString".
+    /// If the model is already registered (explictly or implicitly via another registration) AND/OR the type passed in is not an option type this will no-op.
+    let registerOptionTypesIntoModel (optionType: Type) customTypeSuffix (model: RuntimeTypeModel) =
+        if optionType.IsGenericType && optionType.GetGenericTypeDefinition() = typedefof<Option<_>> then
+            internalRegisterOption optionType model
 
-    let deserialise<'t> (model: RuntimeTypeModel) (stream: Stream) = model.Deserialize(stream, null, typeof<'t>) :?> 't
+
+    let registerListTypeIntoModel<'t> (model: RuntimeTypeModel) =
+       internalRegisterCollection typeof<'t list> model
+       model
+
+
+    let serialise<'t> (model: RuntimeTypeModel) (stream: Stream) (o: 't) =
+        model.Serialize<'t>(stream, o) |> ignore
+
+    let deserialise<'t> (model: RuntimeTypeModel) (stream: Stream) : 't =
+        model.Deserialize<'t>(stream)
 
     let defaultModel = RuntimeTypeModel.Default

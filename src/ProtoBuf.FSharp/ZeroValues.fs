@@ -15,12 +15,6 @@ module ZeroValues =
         let createZeroValueMethodInfoSetter() =
             if fieldType = typeof<string> then
                 MethodHelpers.getFetchFunc <@ String.Empty @> [| |] |> Some
-            elif fieldType.IsGenericType && fieldType.GetGenericTypeDefinition() = typedefof<_ list> then
-                MethodHelpers.getFetchFunc <@ List.empty @> fieldType.GenericTypeArguments |> Some
-            elif fieldType.IsGenericType && fieldType.GetGenericTypeDefinition() = typedefof<Set<_>> then
-                MethodHelpers.getFetchFunc <@ Set.empty @> fieldType.GenericTypeArguments |> Some
-            elif fieldType.IsGenericType && fieldType.GetGenericTypeDefinition() = typedefof<Map<_, _>> then
-                MethodHelpers.getFetchFunc <@ Map.empty @> fieldType.GenericTypeArguments |> Some
             elif fieldType.IsArray then
                 fieldType.GetElementType() |> MethodHelpers.MethodType.NewArray |> Some
             else None

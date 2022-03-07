@@ -107,9 +107,28 @@ vs the default protobuf-net behaviour at time of writing
 { TestOne = null; TestTwo = null }
 ```
 
+## Collection Support ##
+
+When using Protobuf-net with F# there are some issues when using collections:
+
+- By default only the standard .NET collections are supported. F# collections (not being OO based) don't work by default.
+- If a collection is serialised as an empty list it is deserialised as a Null on the other side.
+  - This can play havoc with F# as it introduces nulls into an environment which does not expect them.
+    An example would be if you are doing a structural equality on two records and two levels deep one array is a Null
+    causing the equality to blow up.
+
+This library adds supports for both by adding surrogate types to the model as required for any records/unions registered with the standard ProtoBuf.FSharp.Serialiser:
+
+- Arrays (Not nullable)
+  - All arrays that are empty are deserialised as empty arrays rather than Nulls. In other words an array will never be deserialised as a Null.
+- Lists (FSharpList<_>)
+  - Full roundtrip serialisation support. Any nulls from serialisation will be treated as an empty list as expected.
+- Sets (FSharpSet<_>)
+- Maps (FSharpMap<_, _>)
+
+If you need to serialise a collection by itself (not in a record/DU) or as part of a standard POJO simply
+use the Serialiser.registerRuntimeTypeIntoModel function.
+
 ## Issues ##
 
 Any issues using this feel free to raise an issue on this repository.
-
-
-            

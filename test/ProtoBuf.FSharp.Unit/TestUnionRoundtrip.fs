@@ -65,10 +65,13 @@ module ExampleTypesInsideModule =
     | CaseTwo
     | CaseThreee
 
+    [<RequireQualifiedAccess; TestName("Multicase DU with F# linked list")>]
+    type UnionWithList = | One of int | Two of int list
+
 module TestUnionRoundtrip =
 
     let propertyToTest<'t when 't : equality> (typeToTest: 't) = 
-        let model = RuntimeTypeModel.Create() |> Serialiser.registerUnionIntoModel<'t>
+        let model = RuntimeTypeModel.Create("") |> Serialiser.registerUnionIntoModel<'t>
         model.CompileInPlace()
         let cloned = model.DeepClone(typeToTest)
         equal (unbox cloned) (typeToTest) "Protobuf deep clone"
@@ -91,7 +94,7 @@ module TestUnionRoundtrip =
         testCase 
             "Generate schema" 
             (fun () ->  
-                let model = RuntimeTypeModel.Create() |> Serialiser.registerUnionIntoModel<ExampleTypesInsideModule.UnionNine>
+                let model = RuntimeTypeModel.Create("") |> Serialiser.registerUnionIntoModel<ExampleTypesInsideModule.UnionNine>
                 model.CompileInPlace()
                 let schema = model.GetSchema(typeof<ExampleTypesInsideModule.UnionNine>)
                 equal schema "" "Schema generated")
@@ -116,4 +119,5 @@ module TestUnionRoundtrip =
               buildTest<Result<int, bool>>()
               buildTest<Result<string, int[]>>()
               buildTest<ExampleTypesInsideModule.ValueUnionNoData>()
+              buildTest<ExampleTypesInsideModule.UnionWithList>()
               ]
