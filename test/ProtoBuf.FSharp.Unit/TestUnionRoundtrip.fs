@@ -1,24 +1,11 @@
 namespace ProtoBuf.FSharp.Unit
 
 open Expecto
-open FsCheck
-open System.IO
+open Expecto.Expect
 open ProtoBuf.FSharp
 open ProtoBuf.Meta
-open Expecto.Expect
 
-// F# does not allow nulls although FsCheck tries to stress C# interoperability.
-// Disabling it here because this library is for wrapping F# types only.
-type DataGenerator =
-    static member Generate() : Arbitrary<string[]> = 
-        Gen.oneof ([ "One"; "Two"; "" ] |> List.map Gen.constant) 
-        |> Gen.listOf
-        |> Gen.map List.toArray
-        |> Arb.fromGen
-        
-    static member GenerateNonNullString() : Arbitrary<string> = Arb.Default.StringWithoutNullChars().Generator |> Gen.map (fun x -> x.Get) |> Gen.filter (box >> Operators.isNull >> not) |> Arb.fromGen
-
-module ExampleTypesInsideModule = 
+module ExampleTypesInsideModule =
 
     [<RequireQualifiedAccess; TestName("Single case DU")>]
     type UnionOne = | One
@@ -45,7 +32,7 @@ module ExampleTypesInsideModule =
     type UnionEight = | One of int option * two: int array
 
     [<TestName("Union with generic; two cases")>]
-    type SerialisableOption<'t> = 
+    type SerialisableOption<'t> =
         | SerialisableSome of 't
         | SerialisableNone
 
@@ -53,7 +40,7 @@ module ExampleTypesInsideModule =
     type Wrapper<'t> = | Wrapper of 't
 
     [<TestName("More than 4 cases; one case with no fields")>]
-    type UnionNine = 
+    type UnionNine =
     | CaseOne of numbers: int array // If any of the above show it.
     | CaseTwo of strings: string array
     | CaseThreee of singleData: string
@@ -66,54 +53,32 @@ module ExampleTypesInsideModule =
     | CaseThreee
 
 module TestUnionRoundtrip =
-
-    let propertyToTest<'t when 't : equality> (typeToTest: 't) = 
-        let model = RuntimeTypeModel.Create() |> Serialiser.registerUnionIntoModel<'t>
-        model.CompileInPlace()
-        let cloned = model.DeepClone(typeToTest)
-        equal (unbox cloned) (typeToTest) "Protobuf deep clone"
-        use ms = new MemoryStream()
-        Serialiser.serialise model ms typeToTest
-        ms.Seek(0L, SeekOrigin.Begin) |> ignore
-        let rtData = Serialiser.deserialise<'t> model ms
-        equal rtData typeToTest "Type not equal"
-    
-    let buildTest<'t when 't : equality>() = 
-        let config = { Config.QuickThrowOnFailure with Arbitrary = [ typeof<DataGenerator> ] }
-        let name =
-            match typeof<'t>.GetCustomAttributes(typeof<TestNameAttribute>, true) with
-            | [| :? TestNameAttribute as attr |] -> attr.Name
-            | _ -> sprintf "Union case for %A" typeof<'t>
-        testCase name <| fun () -> Check.One(config, propertyToTest<'t>)
-
     // This test is just to show how the schema will be look like for other consumers. It is expected to fail so isn't used normally.
-    let manualTest = 
-        testCase 
-            "Generate schema" 
-            (fun () ->  
-                let model = RuntimeTypeModel.Create() |> Serialiser.registerUnionIntoModel<ExampleTypesInsideModule.UnionNine>
+    let manualTest =
+        testCase
+            "Generate schema"
+            (fun () ->
+                let model = RuntimeTypeModel.Create("") |> Serialiser.registerUnionIntoModel<ExampleTypesInsideModule.UnionNine>
                 model.CompileInPlace()
                 let schema = model.GetSchema(typeof<ExampleTypesInsideModule.UnionNine>)
                 equal schema "" "Schema generated")
 
     [<Tests>]
-    let test() = 
-        testList 
-            "Union Test Cases" 
-            [ //manualTest
-              buildTest<ExampleTypesInsideModule.UnionOne>()
-              buildTest<ExampleTypesInsideModule.UnionTwo>()
-              buildTest<ExampleTypesInsideModule.UnionThree>()
-              buildTest<ExampleTypesInsideModule.UnionFour>()
-              buildTest<ExampleTypesInsideModule.UnionFive>()
-              buildTest<ExampleTypesInsideModule.UnionSix>()
-              buildTest<ExampleTypesInsideModule.UnionSeven>()
-              buildTest<ExampleTypesInsideModule.UnionEight>()
-              buildTest<ExampleTypesInsideModule.SerialisableOption<string>>() 
-              buildTest<ExampleTypesInsideModule.Wrapper<string>>()
-              buildTest<ExampleTypesInsideModule.UnionNine>()
-              buildTest<ValueOption<string>>()
-              buildTest<Result<int, bool>>()
-              buildTest<Result<string, int[]>>()
-              buildTest<ExampleTypesInsideModule.ValueUnionNoData>()
-              ]
+    let test() =
+        testList "Union Test Cases" [ //manualTest
+            Roundtrip.buildProperty<ExampleTypesInsideModule.UnionOne>()
+            Roundtrip.buildProperty<ExampleTypesInsideModule.UnionTwo>()
+            Roundtrip.buildProperty<ExampleTypesInsideModule.UnionThree>()
+            Roundtrip.buildProperty<ExampleTypesInsideModule.UnionFour>()
+            Roundtrip.buildProperty<ExampleTypesInsideModule.UnionFive>()
+            Roundtrip.buildProperty<ExampleTypesInsideModule.UnionSix>()
+            Roundtrip.buildProperty<ExampleTypesInsideModule.UnionSeven>()
+            Roundtrip.buildProperty<ExampleTypesInsideModule.UnionEight>()
+            Roundtrip.buildProperty<ExampleTypesInsideModule.SerialisableOption<string>>()
+            Roundtrip.buildProperty<ExampleTypesInsideModule.Wrapper<string>>()
+            Roundtrip.buildProperty<ExampleTypesInsideModule.UnionNine>()
+            Roundtrip.buildProperty<ValueOption<string>>()
+            Roundtrip.buildProperty<Result<int, bool>>()
+            Roundtrip.buildProperty<Result<string, int[]>>()
+            Roundtrip.buildProperty<ExampleTypesInsideModule.ValueUnionNoData>()
+        ]

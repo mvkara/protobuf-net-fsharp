@@ -1,7 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net6.0</TargetFramework>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\ProtoBuf.FSharp\ProtoBuf.FSharp.fsproj" />
@@ -13,5 +15,8 @@
     <Compile Include="TestRecordRoundtrip.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
+  <PropertyGroup>
+    <GenerateProgramFile>false</GenerateProgramFile>
+  </PropertyGroup>
   <Import Project="..\..\.paket\Paket.Restore.targets" />
 </Project>

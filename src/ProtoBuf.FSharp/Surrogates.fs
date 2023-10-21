@@ -21,5 +21,10 @@ type Optional<'t> =
         | true -> Some w.Item
 
     static member RegisterIntoModel (model : RuntimeTypeModel) =
-        let surrogateModelType = model.Add(typeof<Optional<'t>>, true)
+        // For some reason on .net 7 that throws:
+        // System.TypeLoadException: Could not load type 'System.Runtime.CompilerServices.IsReadOnlyAttribute' from assembly 'System.Collections.Immutable, Version=7.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a'
+        //let surrogateModelType = model.Add(typeof<Optional<'t>>, true)
+
+        let surrogateModelType = model.Add(typeof<Optional<'t>>, false)
+        surrogateModelType.Add("HasValue", "Item") |> ignore
         surrogateModelType.Name <- "Optional" + typeof<'t>.Name

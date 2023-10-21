@@ -2,6 +2,9 @@ storage:none
 source https://www.nuget.org/api/v2
 
 nuget FSharp.Core >= 4 redirects: force
-nuget protobuf-net
-nuget Expecto
-nuget FsCheck
+nuget protobuf-net >= 3.0
+nuget FsCheck >= 2.0 < 3.0
+nuget Expecto >= 9.0 < 10.0
+nuget Expecto.FsCheck >= 9.0 < 10.0
+nuget YoloDev.Expecto.TestSdk >= 0.13 < 0.14
+nuget Microsoft.NET.Test.Sdk
