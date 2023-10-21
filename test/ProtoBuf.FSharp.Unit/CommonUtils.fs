@@ -38,7 +38,7 @@ module Roundtrip =
 
 
     let private prepareModel<'t> (otherDependentRecordTypes: Type[]) =
-        let name = $"Model for {typeof<'t>}"
+        let name = sprintf "Model for %A" typeof<'t>
         let model = RuntimeTypeModel.Create(name) |> Serialiser.registerTypeIntoModel<'t>
         if otherDependentRecordTypes <> null then
             for dependentRecordType in otherDependentRecordTypes do
@@ -65,8 +65,8 @@ module Roundtrip =
         let struct (testName, otherDependentRecordTypes) =
             match typeof<'t>.GetCustomAttributes(typeof<TestNameAttribute>, true) with
             | [| :? TestNameAttribute as attr |] ->
-                struct ($"{attr.Name} (type = {typeof<'t>})", attr.DependentTypeParamters)
-            | _ -> struct ($"Roundtrip for {typeof<'t>}", Array.empty)
+                struct (sprintf "%s (type = %A)" attr.Name typeof<'t>, attr.DependentTypeParamters)
+            | _ -> struct (sprintf "Roundtrip for %A" typeof<'t>, Array.empty)
 
         let model = prepareModel<'t> otherDependentRecordTypes
         testPropertyWithConfig fsCheckConfig testName (roundtripSerialise<'t> model)
