@@ -1,16 +1,9 @@
 namespace ProtoBuf.FSharp.Unit
 
 open Expecto
-open FsCheck
-open System.IO
-open ProtoBuf.FSharp
-open ProtoBuf.Meta
-open Expecto.Expect
-open System.Collections.Generic
-open System
 
 [<TestName("Standard record with a simple C# list")>]
-type TestRecordOne = 
+type TestRecordOne =
     {
         One: string
         Two: int
@@ -97,70 +90,29 @@ type StructWith2GenericArs<'t, 'r> = {
     Data2 : 'r
 }
 
-module TestRecordRoundtrip = 
-
-    // F# does not allow nulls although FsCheck tries to stress C# interoperability.
-    // Disabling it here because this library is for wrapping F# types only.
-    type DataGenerator =
-        static member Generate() : Arbitrary<string[]> = 
-            Gen.oneof ([ "One"; "Two"; "" ] |> List.map Gen.constant) 
-            |> Gen.listOf
-            |> Gen.map List.toArray
-            |> Arb.fromGen
-            
-        static member GenerateNonNullString() : Arbitrary<string> = Arb.Default.StringWithoutNullChars().Generator |> Gen.map (fun x -> x.Get) |> Gen.filter (box >> Operators.isNull >> not) |> Arb.fromGen
-
-    let roundtripSerialise (typeToTest: 't) (otherDependentRecordTypes: Type array) = 
-        let model = 
-            RuntimeTypeModel.Create()
-            |> Serialiser.registerRecordIntoModel<'t>
-
-        for dependentRecordType in otherDependentRecordTypes do
-            Serialiser.registerRuntimeTypeIntoModel dependentRecordType model |> ignore
-
-        let cloned = model.DeepClone(typeToTest)
-        equal (unbox cloned) typeToTest "Protobuf deep clone"
-        use ms = new MemoryStream()
-        Serialiser.serialise model ms typeToTest
-        ms.Seek(0L, SeekOrigin.Begin) |> ignore
-        Serialiser.deserialise<'t> model ms
-
-    let testRoundtrip<'t when 't : equality> otherDependentRecordTypes (typeToTest: 't)  = 
-        let rtData = roundtripSerialise typeToTest otherDependentRecordTypes
-        equal rtData typeToTest "Type not equal"
-    
-    let config = { Config.QuickThrowOnFailure with Arbitrary = [ typeof<DataGenerator> ]; }
-
-    let emptySingletonListForEqualityComparison = new List<string>() :> IList<string>
-
-    let buildTest<'t when 't : equality> = 
-        let testNameAttribute = typeof<'t>.GetCustomAttributes(typeof<TestNameAttribute>, true) |> Seq.head :?> TestNameAttribute
-        let name = sprintf "%s (%A)" testNameAttribute.Name typeof<'t>
-        testCase name <| fun () -> Check.One(config, testRoundtrip<'t> testNameAttribute.DependentTypeParamters)
-
+module TestRecordRoundtrip =
     let manualTestCases = [
-        testCase "Can serialise empty array, string and option" <| fun () -> testRoundtrip [||] { One = ""; Two = 1; Three = [||]; Four = None } 
-        testCase "Can serialise option containing value" <| fun () -> testRoundtrip [||] { One = ""; Two = 1; Three = [||]; Four = Some "TEST" }
-        testCase "Can serialise string, array and option containing value" <| fun () -> testRoundtrip [||] { One = "TEST"; Two = 1; Three = [| "TEST1" |]; Four = Some "TEST" }
+        testCase "Can serialise empty array, string and option" <| fun () -> Roundtrip.testValue [||] { One = ""; Two = 1; Three = [||]; Four = None }
+        testCase "Can serialise option containing value" <| fun () -> Roundtrip.testValue [||] { One = ""; Two = 1; Three = [||]; Four = Some "TEST" }
+        testCase "Can serialise string, array and option containing value" <| fun () -> Roundtrip.testValue [||] { One = "TEST"; Two = 1; Three = [| "TEST1" |]; Four = Some "TEST" }
     ]
 
     [<Tests>]
-    let test() = 
-        testList 
-            "Record Test Cases" 
-            [ yield buildTest<TestRecordOne>; 
-              yield buildTest<TestRecordTwo>
-              yield buildTest<TestRecordThree>
-              yield buildTest<TestRecordFour>
-              yield buildTest<TestRecordFive>
-              yield buildTest<TestRecordSix>
-              yield buildTest<TestRecordSeven>
-              yield buildTest<NestedRecordWithZeroValues>
-              yield buildTest<StructRecordWithCollectionTestCases>
-              yield buildTest<StructRecordWithNestedTypes>
-              yield buildTest<StructRecordWithNestedStructCollectionTypes>
-              yield buildTest<StructWith2GenericArs<string, int>>
-              yield buildTest<StructWith2GenericArs<string, string[]>>
-              yield buildTest<StructWith2GenericArs<int, string[] option>>
-              yield! manualTestCases
-            ]
+    let test() =
+        testList "Record Test Cases" [
+            testList "Manual" manualTestCases
+            Roundtrip.buildProperty<TestRecordOne>()
+            Roundtrip.buildProperty<TestRecordTwo>()
+            Roundtrip.buildProperty<TestRecordThree>()
+            Roundtrip.buildProperty<TestRecordFour>()
+            Roundtrip.buildProperty<TestRecordFive>()
+            Roundtrip.buildProperty<TestRecordSix>()
+            Roundtrip.buildProperty<TestRecordSeven>()
+            Roundtrip.buildProperty<NestedRecordWithZeroValues>()
+            Roundtrip.buildProperty<StructRecordWithCollectionTestCases>()
+            Roundtrip.buildProperty<StructRecordWithNestedTypes>()
+            Roundtrip.buildProperty<StructRecordWithNestedStructCollectionTypes>()
+            Roundtrip.buildProperty<StructWith2GenericArs<string, int>>()
+            Roundtrip.buildProperty<StructWith2GenericArs<string, string[]>>()
+            Roundtrip.buildProperty<StructWith2GenericArs<int, string[] option>>()
+        ]

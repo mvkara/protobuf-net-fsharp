@@ -1,6 +1,7 @@
-﻿open System
+open System
 open Expecto
-open System.Diagnostics
+
 
 [<EntryPoint>]
-let main argv = Tests.runTestsInAssembly defaultConfig argv
+let main argv =
+    runTestsInAssemblyWithCLIArgs [] argv

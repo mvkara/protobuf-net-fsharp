@@ -13,5 +13,8 @@
     <Compile Include="TestRecordRoundtrip.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
+  <PropertyGroup>
+    <GenerateProgramFile>false</GenerateProgramFile>
+  </PropertyGroup>
   <Import Project="..\..\.paket\Paket.Restore.targets" />
 </Project>

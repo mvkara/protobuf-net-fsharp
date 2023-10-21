@@ -2,3 +2,6 @@ FSharp.Core
 protobuf-net
 Expecto
 FsCheck
+Expecto.FsCheck
+YoloDev.Expecto.TestSdk
+Microsoft.NET.Test.Sdk
