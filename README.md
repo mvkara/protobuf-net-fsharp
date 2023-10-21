@@ -3,6 +3,7 @@
 This library is intended to provide a set of helper functions to allow F# types to be seriaised/deserialised using the protobuf-net library making it easier to use from a F# environment.
 
 [![NuGet Badge](http://img.shields.io/nuget/v/protobuf-net-fsharp.svg?style=flat)](https://www.nuget.org/packages/protobuf-net-fsharp)
+![CI Badge](https://github.com/mvkara/protobuf-net-fsharp/actions/workflows/test.yml/badge.svg)
 
 ## Aims ##
 
@@ -21,18 +22,17 @@ Currently the non-supported features are mainly around the F# collections (Set, 
 
 ## How to build/test ##
 
-Using Net Core 3.0 or above:
+Using Net Core 3.1 or above:
 
-```
+```bash
 dotnet tool restore
 dotnet build
 ```
 
 To run tests:
 
-```
-cd test/ProtoBuf.FSharpHelpers.Unit
-dotnet run
+```bash
+dotnet test
 ```
 
 ## How to use ##
@@ -46,7 +46,7 @@ A quick example of how to get the runtime model, and register both an existing r
 open ProtoBuf.FSharp
 
 let model = 
-    RuntimeTypeModel.Create() // OR RuntimeTypeModel.Default
+    RuntimeTypeModel.Create("Model") // OR RuntimeTypeModel.Default
     |> Serialiser.registerRecordIntoModel<RecordType> 
     |> Serialiser.registerUnionIntoModel<UnionType>
 ```
@@ -110,6 +110,3 @@ vs the default protobuf-net behaviour at time of writing
 ## Issues ##
 
 Any issues using this feel free to raise an issue on this repository.
-
-
-            
